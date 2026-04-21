@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "index.schema.json",
+  "title": "Design Contract Index (A1)",
+  "description": "Cheap Figma file inventory written by scripts/audit-index.mjs. Lists every page and every ≥1280px screen top-level frame. Per-page deep walk happens in A2 (audit-page.mjs / AUDIT.md PAGE mode).",
+  "type": "object",
+  "required": ["schema", "figma", "pages"],
+  "properties": {
+    "schema": { "type": "string", "const": "index/v1" },
+    "figma": {
+      "type": "object",
+      "required": ["fileKey", "fileName"],
+      "properties": {
+        "fileKey": { "type": "string" },
+        "fileName": { "type": "string" },
+        "lastModified": { "type": "string" }
+      }
+    },
+    "pages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "slug", "nodeId", "screenCount", "screens"],
+        "properties": {
+          "name": { "type": "string" },
+          "slug": { "type": "string" },
+          "nodeId": { "type": "string" },
+          "screenCount": { "type": "integer", "minimum": 0 },
+          "baseCount": { "type": "integer", "minimum": 0 },
+          "overlayCount": { "type": "integer", "minimum": 0 },
+          "audited": { "type": "boolean", "description": "True when A2 has populated design-contract/pages/<slug>/" },
+          "screens": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "slug", "nodeId", "width", "height", "x"],
+              "properties": {
+                "name": { "type": "string" },
+                "slug": { "type": "string" },
+                "nodeId": { "type": "string" },
+                "width": { "type": "integer" },
+                "height": { "type": "integer" },
+                "x": { "type": "integer" },
+                "role": { "type": "string", "enum": ["base", "overlay"], "description": "A1 name-hierarchy heuristic. A2 may override after tree-diff confirmation." },
+                "overlayOf": { "type": "string", "description": "Parent screen slug. Present when role=overlay." },
+                "overlayDepth": { "type": "integer", "minimum": 1, "description": "1 = top-level overlay, 2+ = nested overlay" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "tokens": {
+      "type": "object",
+      "properties": {
+        "source": { "type": "string", "enum": ["variables", "styles"] },
+        "collections": { "type": "integer" },
+        "variables": { "type": "integer" },
+        "note": { "type": "string" }
+      }
+    },
+    "styles": { "type": "object" }
+  }
+}

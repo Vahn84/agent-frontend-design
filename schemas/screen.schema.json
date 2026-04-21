@@ -1,0 +1,180 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Screen",
+  "description": "Per-screen spec (screens-first, R1/R32). Every descendant node captured verbatim from client.getFileNodes + transformNode — typography, colors, dimensions, nested icons. Mock data 1:1 Figma (R3).",
+  "type": "object",
+  "required": ["name", "nodeId", "route", "dimensions", "layoutSizing", "tree", "mockData"],
+  "properties": {
+    "name": { "type": "string" },
+    "nodeId": { "type": "string" },
+    "route": { "type": "string", "description": "URL path (e.g. /login, /orders/list)" },
+    "viewportFit": {
+      "enum": ["fill", "fixed-design", "scale"],
+      "default": "fill",
+      "description": "How the screen root occupies the viewport. See R31."
+    },
+    "dimensions": {
+      "type": "object",
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "number" },
+        "height": { "type": "number" }
+      }
+    },
+    "layoutSizing": {
+      "type": "object",
+      "required": ["horizontal", "vertical"],
+      "properties": {
+        "horizontal": { "enum": ["FIXED", "FILL", "HUG"] },
+        "vertical": { "enum": ["FIXED", "FILL", "HUG"] }
+      }
+    },
+    "tree": {
+      "type": "array",
+      "description": "Ordered layout tree. Every descendant captured per R1/R32.",
+      "items": { "$ref": "#/definitions/node" }
+    },
+    "mockData": {
+      "type": "object",
+      "description": "Exact text/data captured from Figma (R3). No inventing.",
+      "additionalProperties": true
+    },
+    "dataDrivenStyles": {
+      "type": "object",
+      "description": "Map of field value → variant name for data-bound components.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": { "type": "string" }
+      }
+    },
+    "role": {
+      "enum": ["base", "overlay"],
+      "default": "base",
+      "description": "A2 carries A1's index.yml role forward. Overlays are rendered on top of their base screen rather than routed standalone."
+    },
+    "overlayOf": {
+      "type": "string",
+      "description": "Parent screen slug. Required when role=overlay."
+    },
+    "modals": {
+      "type": "array",
+      "description": "Overlay components layered on this base screen. A2 extracts delta subtrees from overlay-role siblings in the same index.yml page and records them here. Each entry references a modal component spec in components/<name>.yml (classification.kind='library-wrapped'|'custom', variant corresponds to an overlay variant e.g. 'default', 'success', 'fail'). Empty when the screen has no overlays.",
+      "items": {
+        "type": "object",
+        "required": ["name", "sourceOverlaySlug", "componentName"],
+        "properties": {
+          "name": { "type": "string", "description": "Human label — e.g. 'Cambio owner', 'Filtri'." },
+          "sourceOverlaySlug": { "type": "string", "description": "Slug of the overlay screen in index.yml this modal was extracted from." },
+          "componentName": { "type": "string", "description": "Name of the component spec in components/<name>.yml." },
+          "variantName": { "type": "string", "description": "Variant within the modal component (e.g. nested overlay states Urgenza ON/OFF become variants)." },
+          "openTrigger": { "type": "string", "description": "Best-effort label for trigger source on base screen (button text, icon). Optional — may be inferred later." },
+          "closeTrigger": { "type": "string", "description": "Best-effort label for close affordance. Optional." },
+          "state": { "type": "object", "additionalProperties": true, "description": "Free-form state params passed to modal (e.g. selected row id)." }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "node": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "id": { "type": "string", "description": "Figma nodeId for this descendant." },
+        "name": { "type": "string" },
+        "kind": {
+          "description": "Legacy kinds 'component' / 'container' still accepted for backward-compat with pre-screens-first contracts.",
+          "enum": ["frame", "text", "instance", "vector", "rectangle", "ellipse", "group", "component", "container"]
+        },
+        "componentName": { "type": "string", "description": "Legacy: used when kind=component" },
+        "mainComponentId": { "type": "string", "description": "Instance only — Figma mainComponent id" },
+        "mainComponentKey": { "type": "string", "description": "Instance only — stable library component key, used to cluster across screens" },
+        "variantName": { "type": "string" },
+        "propsFromData": { "type": "object", "description": "Bind mockData keys → component props" },
+        "layoutSizing": {
+          "type": "object",
+          "properties": {
+            "horizontal": { "enum": ["FIXED", "FILL", "HUG"] },
+            "vertical": { "enum": ["FIXED", "FILL", "HUG"] }
+          }
+        },
+        "dimensions": {
+          "type": "object",
+          "properties": {
+            "width": { "type": ["number", "null"] },
+            "height": { "type": ["number", "null"] }
+          }
+        },
+        "spacing": {
+          "type": "object",
+          "properties": {
+            "gap": { "type": ["number", "null"] },
+            "paddingTop": { "type": "number" },
+            "paddingRight": { "type": "number" },
+            "paddingBottom": { "type": "number" },
+            "paddingLeft": { "type": "number" }
+          }
+        },
+        "direction": { "enum": ["row", "column"] },
+        "alignItems": { "type": "string" },
+        "justifyContent": { "type": "string" },
+        "colorToken": { "type": "string", "description": "Fill token path (R6). Must resolve to a key in tokens.map." },
+        "radius": { "type": ["number", "string", "null"] },
+        "border": {
+          "type": "object",
+          "properties": {
+            "width": { "type": "number" },
+            "colorToken": { "type": "string" },
+            "style": { "enum": ["solid", "dashed", "dotted"] }
+          }
+        },
+        "text": {
+          "type": "object",
+          "description": "Only for kind=text. Content + typography style key + resolved color token + align.",
+          "properties": {
+            "content": { "type": "string" },
+            "style": { "type": "string", "description": "Key into typography.styles" },
+            "color": { "type": "string", "description": "Token path (key into tokens.map)" },
+            "textAlign": { "enum": ["left", "center", "right", "justify"] }
+          }
+        },
+        "icon": {
+          "type": "object",
+          "description": "Only for kind=vector or instance-wrapping-vector. Links back to icons.yml.",
+          "properties": {
+            "iconName": { "type": "string" },
+            "visibleSizePx": { "type": "number" },
+            "colorToken": { "type": ["string", "null"] }
+          }
+        },
+        "imageFrame": {
+          "type": "object",
+          "description": "Only for image fills (R29). Preserve crop percentages verbatim.",
+          "properties": {
+            "assetName": { "type": "string" },
+            "container": {
+              "type": "object",
+              "properties": {
+                "widthPx": { "type": "number" },
+                "heightPx": { "type": "number" }
+              }
+            },
+            "imageWidthPct": { "type": "number" },
+            "imageHeightPct": { "type": "number" },
+            "imageLeftPct": { "type": "number" },
+            "imageTopPct": { "type": "number" },
+            "scaleMode": { "enum": ["FIT", "FILL", "CROP", "TILE"] }
+          }
+        },
+        "rendered": {
+          "type": "object",
+          "description": "Free-form decoration observed from in-screen transformNode output. Used when an instance has decoration beyond its master defaults.",
+          "additionalProperties": true
+        },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/node" }
+        }
+      }
+    }
+  }
+}

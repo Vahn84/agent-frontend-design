@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Tokens",
+  "description": "Design tokens resolved from Figma variables. Map of figmaVarPath -> {cssVar, value, type}.",
+  "type": "object",
+  "required": ["map"],
+  "properties": {
+    "map": {
+      "type": "object",
+      "description": "Keys = Figma variable path (e.g. 'surface/surface-brand'). Values = token definition.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["cssVar", "value", "type"],
+        "properties": {
+          "cssVar": {
+            "type": "string",
+            "pattern": "^--[a-z0-9-]+$",
+            "description": "CSS custom property name (e.g. --color-surface-brand)."
+          },
+          "value": {
+            "type": "string",
+            "description": "Resolved value (hex, px, rem, number). Raw — consumed by token file generators."
+          },
+          "type": { "enum": ["color", "spacing", "radius", "border", "shadow", "typography", "number", "string"] },
+          "modes": {
+            "type": "object",
+            "description": "Per-mode values (e.g. light/dark). Keys = mode name.",
+            "additionalProperties": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

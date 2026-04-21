@@ -1,0 +1,161 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Component",
+  "description": "Per-component spec. One file per component. Complete per R7 — validation verifies, never repairs.",
+  "type": "object",
+  "required": ["name", "nodeId", "classification", "variants"],
+  "properties": {
+    "name": { "type": "string" },
+    "nodeId": { "type": "string" },
+    "description": { "type": "string" },
+    "classification": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["custom", "library-wrapped", "modal"] },
+        "libraryComponent": { "type": ["string", "null"], "description": "e.g. 'PrimeReact/DataTable' (required when library-wrapped per R9)" },
+        "importPath": { "type": ["string", "null"] },
+        "modalOf": { "type": "string", "description": "When kind=modal: slug of the base screen this modal is rendered over. Informational — modal components may be reused across multiple bases." }
+      }
+    },
+    "variants": {
+      "type": "array",
+      "description": "Every distinct variant per R1/R8. At least 'default'.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "nodeId", "layoutSizing", "dimensions", "spacing", "typography", "colors"],
+        "properties": {
+          "name": { "type": "string", "description": "e.g. default, hover, disabled, success, error" },
+          "nodeId": { "type": "string", "description": "Representative instance nodeId (first observation) — kept for back-compat." },
+          "instances": {
+            "type": "array",
+            "description": "R8: every instance that hashed to this variant's signature. Screens-first audit writes one entry per observation — enables debugging and trace from variant back to source screen.",
+            "items": {
+              "type": "object",
+              "required": ["instanceNodeId"],
+              "properties": {
+                "screenNodeId": { "type": "string" },
+                "instanceNodeId": { "type": "string" }
+              }
+            }
+          },
+          "referenceCode": {
+            "type": "string",
+            "description": "Full reference React+Tailwind built from transformNode output for this variant (R8 — per-variant, not diff)."
+          },
+          "layoutSizing": {
+            "type": "object",
+            "required": ["horizontal", "vertical"],
+            "properties": {
+              "horizontal": { "enum": ["FIXED", "FILL", "HUG"] },
+              "vertical": { "enum": ["FIXED", "FILL", "HUG"] }
+            }
+          },
+          "dimensions": {
+            "type": "object",
+            "description": "Required for FIXED. Null for FILL/HUG (R19).",
+            "properties": {
+              "width": { "type": ["number", "null"] },
+              "height": { "type": ["number", "null"] }
+            }
+          },
+          "spacing": {
+            "type": "object",
+            "properties": {
+              "gap": { "type": ["number", "null"] },
+              "paddingTop": { "type": "number" },
+              "paddingRight": { "type": "number" },
+              "paddingBottom": { "type": "number" },
+              "paddingLeft": { "type": "number" }
+            }
+          },
+          "typography": {
+            "type": "array",
+            "description": "Text nodes in this variant. References typography.styles by key.",
+            "items": {
+              "type": "object",
+              "required": ["textStyle", "role"],
+              "properties": {
+                "textStyle": { "type": "string", "description": "Key in typography.styles" },
+                "role": { "type": "string", "description": "label | value | heading | caption ..." },
+                "colorToken": { "type": "string", "description": "Figma variable path in tokens.map" }
+              }
+            }
+          },
+          "colors": {
+            "type": "object",
+            "description": "All fills/strokes for this variant, as token refs (R6). No raw hex.",
+            "additionalProperties": {
+              "type": "string",
+              "description": "Figma variable path (key in tokens.map)."
+            }
+          },
+          "radius": { "type": ["number", "null"] },
+          "border": {
+            "type": "object",
+            "properties": {
+              "width": { "type": "number" },
+              "colorToken": { "type": "string" },
+              "style": { "enum": ["solid", "dashed", "dotted"] }
+            }
+          },
+          "shadow": { "type": ["string", "null"], "description": "Token ref for shadow or null." },
+          "icons": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["iconName", "visibleSizePx"],
+              "properties": {
+                "iconName": { "type": "string", "description": "Key in icons.icons[].name" },
+                "visibleSizePx": { "type": "number", "description": "Required for R12 sizing math" },
+                "colorToken": { "type": "string" }
+              }
+            }
+          },
+          "children": {
+            "type": "array",
+            "description": "Nested component references for composite variants.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "componentName": { "type": "string" },
+                "variantName": { "type": "string" }
+              }
+            }
+          },
+          "imageFrames": {
+            "type": "array",
+            "description": "Relative-sized images / crops (R29). Stores exact percentages from Figma reference so build can replicate the crop without collapsing to object-fit.",
+            "items": {
+              "type": "object",
+              "required": ["slot", "assetName", "container"],
+              "properties": {
+                "slot": { "type": "string", "description": "Identifier (e.g. 'logo', 'cover')" },
+                "assetName": { "type": "string", "description": "Key in meta.assets[].name" },
+                "container": {
+                  "type": "object",
+                  "required": ["widthPx", "heightPx"],
+                  "properties": {
+                    "widthPx": { "type": "number" },
+                    "heightPx": { "type": "number" }
+                  }
+                },
+                "imageWidthPct": { "type": "number", "description": "Image display width as % of container (can exceed 100)" },
+                "imageHeightPct": { "type": "number" },
+                "imageLeftPct": { "type": "number", "description": "Negative = crop from left" },
+                "imageTopPct": { "type": "number" },
+                "scaleMode": { "enum": ["FIT", "FILL", "CROP", "TILE"], "default": "CROP" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "stateMap": {
+      "type": "object",
+      "description": "Optional: data-value → variantName. E.g. {'approved': 'success', 'pending': 'warning'}.",
+      "additionalProperties": { "type": "string" }
+    }
+  }
+}

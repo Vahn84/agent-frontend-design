@@ -1,0 +1,101 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Meta",
+  "type": "object",
+  "required": ["figma", "framework", "styling", "project"],
+  "properties": {
+    "figma": {
+      "type": "object",
+      "required": ["fileKey", "pageId"],
+      "properties": {
+        "fileKey": { "type": "string" },
+        "libraryFileKey": { "type": ["string", "null"] },
+        "pageId": { "type": "string" },
+        "url": { "type": "string" }
+      }
+    },
+    "framework": { "enum": ["react", "angular"] },
+    "styling": { "enum": ["tailwind", "scss"] },
+    "library": {
+      "type": "object",
+      "properties": {
+        "name": { "type": ["string", "null"] },
+        "components": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["figmaName", "libraryComponent"],
+            "properties": {
+              "figmaName": { "type": "string" },
+              "libraryComponent": { "type": "string" },
+              "importPath": { "type": "string" },
+              "wrappedPrimitive": {
+                "enum": ["table", "checkbox", "radio", "switch", "input", "textarea", "select", "slider", "button", "datepicker"],
+                "description": "Which HTML primitive this wrapper replaces. Enforced by scripts/check-wrappers.mjs (R14)."
+              }
+            }
+          }
+        }
+      }
+    },
+    "project": {
+      "type": "object",
+      "required": ["name", "path"],
+      "properties": {
+        "name": { "type": "string" },
+        "path": { "type": "string" }
+      }
+    },
+    "webfont": {
+      "type": "object",
+      "properties": {
+        "prefix": { "type": "string" },
+        "name": { "type": "string" }
+      }
+    },
+    "assets": {
+      "type": "array",
+      "description": "Static assets copied into project during scaffold. Agents reference by name + path.",
+      "items": {
+        "type": "object",
+        "required": ["kind", "name", "path"],
+        "properties": {
+          "kind": { "enum": ["image", "svg", "font", "other"] },
+          "name": { "type": "string", "description": "Stable identifier for agents (e.g. \"cover\", \"logo\")" },
+          "path": { "type": "string", "description": "Path relative to project src (e.g. \"src/assets/images/cover.jpg\")" },
+          "figmaNodeId": { "type": "string", "description": "Origin node in Figma (for sync)" }
+        }
+      }
+    },
+    "strategy": {
+      "type": "object",
+      "description": "Build strategy config (R34-R37). OPTIONAL: legacy contracts without this block default to mode='full' at read-time for backward compat. New contracts default to 'screen-by-screen' (written by AUDIT).",
+      "properties": {
+        "mode": {
+          "enum": ["full", "screen-by-screen"],
+          "default": "screen-by-screen",
+          "description": "full = parallel batches (components then screens). screen-by-screen = sequential per-screen with component-per-screen prebuild + auto-fix loop."
+        },
+        "fixCap": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10,
+          "default": 3,
+          "description": "R35 auto-fix iteration cap per screen in screen-by-screen mode."
+        },
+        "autoFixThreshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.9,
+          "description": "R36 fidelity threshold below which auto-fix triggers (0.0–1.0)."
+        },
+        "screenOrder": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Ordered list of screen names for screen-by-screen mode. Defaults to Figma X-position (left-to-right) written by AUDIT. Optional override."
+        }
+      }
+    }
+  }
+}

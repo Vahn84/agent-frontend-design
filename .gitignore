@@ -1,0 +1,25 @@
+node_modules/
+.cache/
+.env
+.env.local
+.DS_Store
+dist/
+out/
+*.log
+
+# generated workflow artifacts
+.build-slices/
+.validate-cache/
+.figma-refs/
+design-contract/
+FIXLOG.md
+build-log.json
+
+# scratch / local only
+.smoke/
+test/
+test-v*/
+patch-icons.tmp.mjs
+
+# local Claude settings (contains secrets)
+.claude/settings.local.json
