@@ -28,10 +28,10 @@ Spawn `BUILD-COMPONENT.md` agents (parallel cap 4). Each receives ONE slice.
 Spawn `BUILD-SCREEN.md` agents (cap 2).
 
 ### F. Validate (screens only — R18)
-`VALIDATE.md --fast` per screen runs L0–L4 (no Figma reference, so L5 skipped — compares only against synthesized spec).
+`VALIDATE.md --fast` per screen runs L0–L4 (no Figma reference, so L5 skipped — compares only against its own synthesized spec).
 
 ### G. Reverse-contract check
-After build, run "observational audit" — orchestrator reads each built page, measures computed styles, confirms they match synthesized spec. Corrects drift in contract so future `/sync` works.
+After build, run an "observational audit" — orchestrator reads each built page, measures computed styles, confirms they match the synthesized spec. Corrects drift in contract so future `/sync` works.
 
 ### H. Report
 Dev server URL. Contract path. (No Figma push — this fork is REST read-only.)

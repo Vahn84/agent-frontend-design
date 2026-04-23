@@ -6,10 +6,10 @@
 ## Philosophy
 
 - One stack, one structure, one set of conventions across every project. Consistency over preference.
-- Conventions enforced by tooling, not by review.
+- Conventions are enforced by tooling, not by review.
 - Standalone, signal-driven, OnPush by default. No NgModules.
-- Design contract (when present) is source of truth for tokens. Contract drives code, not other way around.
-- Boundaries explicit and machine-checked. Cross-feature imports disallowed.
+- The design contract (when present) is the source of truth for tokens. The contract drives the code, not the other way around.
+- Boundaries are explicit and machine-checked. Cross-feature imports are disallowed.
 
 ---
 
@@ -48,11 +48,11 @@ Testing and security tooling: see `TESTING-AND-SECURITY.md`.
 | `SCREAMING_SNAKE_CASE` | environment constants, enum values |
 
 Rules:
-- File name mirrors case rule. `user-profile.component.ts` defines `UserProfile` (Angular v20+ allows dropping `Component` suffix in class name; file suffix remains).
-- File suffixes explicit and stable: `.component.ts`, `.directive.ts`, `.service.ts`, `.guard.ts`, `.pipe.ts`, `.resolver.ts`, `.routes.ts`.
-- Signal variables named like properties (`count`, `isLoading`), not `count$` (that's RxJS observable convention).
+- File name mirrors the case rule. `user-profile.component.ts` defines `UserProfile` (Angular v20+ allows dropping the `Component` suffix in the class name; the file suffix remains).
+- File suffixes are explicit and stable: `.component.ts`, `.directive.ts`, `.service.ts`, `.guard.ts`, `.pipe.ts`, `.resolver.ts`, `.routes.ts`.
+- Signal variables are named like properties (`count`, `isLoading`), not `count$` (that's RxJS observable convention).
 - Boolean signals start with `is`, `has`, `should`, or `can`.
-- Output names start with verb parent reacts to (`save`, `delete`, `submit`) — never prefixed with `on`.
+- Output names start with the verb the parent reacts to (`save`, `delete`, `submit`) — never prefixed with `on`.
 
 ---
 
@@ -86,11 +86,11 @@ src/
 ```
 
 Rules:
-- Feature **never** imports from another feature.
-- Code promoted to `shared/` or `core/` only when 2+ features actually need it.
-- Each feature exports single public entry component (e.g. `UsersPage`); internal components are private.
-- Route definitions colocated with feature in `<feature>/<feature>.routes.ts`, not in `app.routes.ts`.
-- Boundaries enforced by `eslint-plugin-boundaries`. Violations fail build.
+- A feature **never** imports from another feature.
+- Code is promoted to `shared/` or `core/` only when 2+ features actually need it.
+- Each feature exports a single public entry component (e.g. `UsersPage`); internal components are private.
+- Route definitions are colocated with the feature in `<feature>/<feature>.routes.ts`, not in `app.routes.ts`.
+- Boundaries are enforced by `eslint-plugin-boundaries`. Violations fail the build.
 
 ---
 
@@ -110,11 +110,11 @@ src/styles/
 
 Rules:
 - Single entry point `src/styles.scss` imports layers in this exact order: `abstracts → vendors → base → layout → components → pages → themes → utils`.
-- All partials start with `_` and imported only via entry point or higher-level files.
+- All partials start with `_` and are imported only via the entry point or higher-level files.
 - Per-component `.scss` files import **only** from `abstracts/`. Never from another component or another layer.
-- Component styles scoped by Angular's view encapsulation by default. Do not disable view encapsulation.
+- Component styles are scoped by Angular's view encapsulation by default. Do not disable view encapsulation.
 - New design tokens (colors, spacing, radius, typography) go in `abstracts/_variables.scss` only.
-- Class names in templates are `kebab-case`. BEM (`__element`, `--modifier`) allowed inside components.
+- Class names in templates are `kebab-case`. BEM (`__element`, `--modifier`) is allowed inside components.
 - **Never** use `[ngClass]` or `[ngStyle]`. Use `[class.<name>]="condition"` and `[style.<prop>]="value"` bindings.
 
 ---
@@ -123,7 +123,7 @@ Rules:
 
 ### Component definition
 
-- **Standalone always.** Never use `NgModule`. (Standalone is default in Angular v20+; do not set `standalone: true` explicitly.)
+- **Standalone always.** Never use `NgModule`. (Standalone is the default in Angular v20+; do not set `standalone: true` explicitly.)
 - **OnPush always.** Set `changeDetection: ChangeDetectionStrategy.OnPush` in every `@Component` decorator.
 - Inline templates for small components (under ~30 lines of HTML). External templates/styles use relative paths.
 - One component per file. File and class names match.
@@ -138,7 +138,7 @@ Rules:
 ### Host bindings
 
 - **Never** use `@HostBinding` or `@HostListener`.
-- Use `host` object inside `@Component` or `@Directive`:
+- Use the `host` object inside `@Component` or `@Directive`:
 
 ```typescript
 @Component({
@@ -151,16 +151,16 @@ Rules:
 })
 ```
 
-(Example structure only — actual code lives in project, not this doc.)
+(Example structure only — actual code lives in the project, not this doc.)
 
 ### Templates
 
 - **Use native control flow:** `@if`, `@for`, `@switch`. **Never** use `*ngIf`, `*ngFor`, `*ngSwitch`.
-- Use `async` pipe for observables in templates.
-- Use `track` expressions in `@for` blocks (required).
-- Use `NgOptimizedImage` for all static images. Incompatible with inline base64 — use file paths.
+- Use the `async` pipe for observables in templates.
+- Use `track` expressions in `@for` blocks (they are required).
+- Use `NgOptimizedImage` for all static images. It is incompatible with inline base64 — use file paths.
 - No business logic in templates. Extract to component class methods or `computed()` signals.
-- No global object access in templates (`new Date()`, `Math.random()`, etc.) — pre-compute in class.
+- No global object access in templates (`new Date()`, `Math.random()`, etc.) — pre-compute in the class.
 
 ---
 
@@ -180,34 +180,34 @@ Rules:
 | Local component state | `signal()` / `computed()` |
 | Cross-component within a feature | Feature-scoped service in `src/features/<feature>/services/` exposing signals |
 | Truly global (auth, theme, user, locale) | Global service in `src/core/` exposing signals |
-| Server state (HTTP responses) | Service wrapping `HttpClient` exposing signals; pair with `resource()` API where appropriate |
+| Server state (HTTP responses) | Service that wraps `HttpClient` and exposes signals; pair with `resource()` API where appropriate |
 
 Rules:
-- Default to local state. Promote to feature service only when 2+ components in same feature need it.
+- Default to local state. Promote to a feature service only when 2+ components in the same feature need it.
 - Promote to `core/` only when 2+ features need it.
-- Never use global service as dumping ground.
-- Service has single responsibility.
+- Never use a global service as a dumping ground.
+- A service has a single responsibility.
 
 ---
 
 ## 7. Dependency injection
 
 - **Always use `inject()`** instead of constructor injection.
-- `providedIn: 'root'` for singletons available app-wide.
+- `providedIn: 'root'` for singletons that should be available app-wide.
 - `providedIn: 'platform'` only for cross-app singletons (rare).
-- Feature-scoped services provided in feature's route configuration via `providers` so they tree-shake correctly.
+- Feature-scoped services are provided in the feature's route configuration via `providers` so they tree-shake correctly.
 - Never use `@Injectable()` without `providedIn`.
 
 ---
 
 ## 8. Routing
 
-- Angular Router with **lazy-loaded routes** for every feature: `loadChildren: () => import('...')` or `loadComponent`.
+- Use Angular Router with **lazy-loaded routes** for every feature: `loadChildren: () => import('...')` or `loadComponent`.
 - Top-level routes live in `src/app/app.routes.ts` and only reference feature route files via lazy loading.
-- Feature route files (`src/features/<feature>/<feature>.routes.ts`) own feature's internal routing.
-- Define route guards as functional guards (function-based API), not class-based.
-- Always declare `**` wildcard route mapping to `NotFound` component.
-- Always declare explicit `403` (Forbidden) route.
+- Feature route files (`src/features/<feature>/<feature>.routes.ts`) own the feature's internal routing.
+- Define route guards as functional guards (the function-based API), not class-based.
+- Always declare a `**` wildcard route that maps to a `NotFound` component.
+- Always declare an explicit `403` (Forbidden) route.
 - Use `withComponentInputBinding()` so route params bind directly to component inputs.
 
 ---
@@ -217,7 +217,7 @@ Rules:
 - **Reactive forms only.** Never use template-driven forms (`ngModel`).
 - Build forms with `FormBuilder` injected via `inject(FormBuilder)`.
 - Use typed forms (`FormGroup<T>`, `FormControl<T>`) — never untyped.
-- Validation runs in form definition, not in component logic.
+- Validation runs in the form definition, not in the component logic.
 - Custom validators are pure functions in `src/features/<feature>/utils/` or `src/shared/`.
 
 ---
@@ -226,7 +226,7 @@ Rules:
 
 - Use `HttpClient` injected via `inject(HttpClient)`.
 - HTTP services live in `src/features/<feature>/api/` or `src/core/api/` for shared.
-- Wrap HTTP responses in services exposing signals or observables — components never call `HttpClient` directly.
+- Wrap HTTP responses in services that expose signals or observables — components never call `HttpClient` directly.
 - Use `resource()` API for declarative data fetching tied to signals.
 - For OpenAPI-driven projects: generated client lives at `src/generated/api/`, regenerated via `npm run api:generate` in `prebuild`. Never edit generated files by hand.
 - Boundaries config explicitly allows imports from `src/generated/`.
@@ -236,9 +236,9 @@ Rules:
 ## 11. Performance
 
 - `OnPush` change detection on every component (already covered in §5).
-- `@for` blocks always include `track` expression.
+- `@for` blocks always include a `track` expression.
 - Lazy load every feature.
-- Use `defer` blocks for content below fold.
+- Use `defer` blocks for content below the fold.
 - `NgOptimizedImage` for all static images.
 - Avoid `*ngFor` over large lists without virtual scrolling — use `@angular/cdk/scrolling` `cdk-virtual-scroll-viewport`.
 - Avoid heavy computation in templates — pre-compute in `computed()` signals.
@@ -248,7 +248,7 @@ Rules:
 ## 12. TypeScript
 
 - **`strict: true`** in `tsconfig.json` (no exceptions).
-- Prefer type inference where type is obvious.
+- Prefer type inference where the type is obvious.
 - **Never** use `any`. Use `unknown` for genuinely uncertain values, then narrow.
 - Type every public API explicitly (component inputs/outputs, service methods, signals).
 - Prefer `interface` for object shapes; `type` for unions and intersections.
@@ -257,7 +257,7 @@ Rules:
 
 ## 13. Code quality
 
-Quality enforced at three points: edit time (lint), pre-commit (Husky), and CI (PR pipeline).
+Quality is enforced at three points: edit time (lint), pre-commit (Husky), and CI (PR pipeline).
 
 Required configuration:
 - ESLint with `@angular-eslint`, `@angular-eslint/template`, `eslint-plugin-boundaries`, security plugins
@@ -267,10 +267,10 @@ Required configuration:
 - TypeScript `strict: true`
 
 Rules:
-- `git commit --no-verify` forbidden.
-- `eslint-disable-next-line` requires justification comment on same line.
-- Boundaries violations fail build. Do not silence; fix import.
-- ESLint config and pre-commit hooks owned by tooling, not individual contributors. Local overrides not allowed.
+- `git commit --no-verify` is forbidden.
+- `eslint-disable-next-line` requires a justification comment on the same line.
+- Boundaries violations fail the build. Do not silence them; fix the import.
+- ESLint config and pre-commit hooks are owned by tooling, not by individual contributors. Local overrides are not allowed.
 
 Conventional Commits — required types: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `perf`, `style`. Format: `type(scope): subject`.
 
@@ -280,58 +280,58 @@ Full testing and security configuration lives in `TESTING-AND-SECURITY.md`.
 
 ## 14. Design tokens (contract-driven)
 
-When project consumes design contract (`design-contract/` directory), tokens are generated, not hand-written.
+When the project consumes a design contract (`design-contract/` directory), tokens are generated, not hand-written.
 
 Generation rules:
-- `src/styles/abstracts/_variables.scss` generated from `tokens.colors`, `tokens.spacing`, `tokens.radius`, `tokens.typography` in contract
-- Same values mirrored as CSS custom properties in `:root` for runtime theming
-- Naming follows contract structure: `$color-gray-0`, `$spacing-md`, `$radius-lg`, `$font-size-6`
+- `src/styles/abstracts/_variables.scss` is generated from `tokens.colors`, `tokens.spacing`, `tokens.radius`, `tokens.typography` in the contract
+- The same values are mirrored as CSS custom properties in `:root` for runtime theming
+- Naming follows the contract structure: `$color-gray-0`, `$spacing-md`, `$radius-lg`, `$font-size-6`
 - Semantic tokens reference primitives, in both SCSS and CSS custom properties
-- Generated file checked into repo with header comment indicating it is generated; manual edits forbidden
-- Regenerating from new contract version produces deterministic file (no diff churn)
+- The generated file is checked into the repo with a header comment indicating it is generated; manual edits are forbidden
+- Regenerating from a new contract version produces a deterministic file (no diff churn)
 
-For projects scaffolded with `/create-app` (no contract), `_variables.scss` ships with placeholder tokens team replaces over time.
+For projects scaffolded with `/create-app` (no contract), `_variables.scss` ships with placeholder tokens that the team replaces over time.
 
 ---
 
 ## 15. Complex component libraries
 
-For widgets where building from scratch would take weeks and never match battle-tested library — calendar pickers, data tables, autocomplete, multi-select, drag-drop trees, rich text editors, charts, virtual scroll lists, color pickers, etc. — use **one** library per project, declared at scaffold time.
+For widgets where building from scratch would take weeks and never match a battle-tested library — calendar pickers, data tables, autocomplete, multi-select, drag-drop trees, rich text editors, charts, virtual scroll lists, color pickers, etc. — use **one** library per project, declared at scaffold time.
 
 **Recommended default:** PrimeNG (matches PrimeReact for cross-framework projects, comprehensive coverage, CSS variable theming, idiomatic Angular APIs).
 
-**Alternatives:** Angular Material (MD3-styled, native Angular fit), NG-ZORRO (Ant Design), Angular CDK + custom (headless primitives, maximum design fidelity). Pick based on project's design fidelity requirements.
+**Alternatives:** Angular Material (MD3-styled, native Angular fit), NG-ZORRO (Ant Design), Angular CDK + custom (headless primitives, maximum design fidelity). Pick based on the project's design fidelity requirements.
 
 **Rules:**
 - One library per project. **Never mix.**
-- Library used for complex widgets only. Simple widgets (button, input, label, checkbox, card, badge, alert, modal frame, tab, breadcrumb, accordion, simple dropdown) built from scratch as project components.
-- Library imports restricted to `src/lib/<library>/`. Feature code imports wrappers from `src/shared/components/`, never from library package directly.
-- Every library component used by app gets thin **wrapper** standalone component in `src/shared/components/<component>/` exposing project's own input/output API. Decouples feature code from library and makes future swaps possible without touching every page.
+- The library is used for complex widgets only. Simple widgets (button, input, label, checkbox, card, badge, alert, modal frame, tab, breadcrumb, accordion, simple dropdown) are built from scratch as project components.
+- Library imports are restricted to `src/lib/<library>/`. Feature code imports the wrappers from `src/shared/components/`, never from the library package directly.
+- Every library component used by the app gets a thin **wrapper** standalone component in `src/shared/components/<component>/` that exposes the project's own input/output API. This decouples feature code from the library and makes future swaps possible without touching every page.
 - Wrappers hide library-specific options (`pTemplate`, `pt`, `appendTo`, etc.) behind project-specific inputs.
-- Library theming applied via CSS variables overrides in `src/styles/themes/_<library>-theme.scss`, mapping library's theme tokens to project's design tokens.
-- Library's default CSS reset and base styles imported once in `src/styles/vendors/`.
-- Library version pinned in `package.json` with `~` (allow patch updates only). Major upgrades require explicit migration ticket.
-- If library ships own NgModules (PrimeNG components are standalone in v17+ — use standalone API), import them only inside wrapper, never in feature components.
-- Boundaries config has explicit allow rule for `src/lib/<library>/` to prevent accidental imports.
+- Library theming is applied via CSS variables overrides in `src/styles/themes/_<library>-theme.scss`, mapping the library's theme tokens to the project's design tokens.
+- The library's default CSS reset and base styles are imported once in `src/styles/vendors/`.
+- Library version is pinned in `package.json` with `~` (allow patch updates only). Major upgrades require an explicit migration ticket.
+- If the library ships its own NgModules (PrimeNG components are standalone in v17+ — use the standalone API), import them only inside the wrapper, never in feature components.
+- Boundaries config has an explicit allow rule for `src/lib/<library>/` to prevent accidental imports.
 
 **Forbidden:**
 - Mixing two component libraries.
-- Importing library components directly from feature code (always go through wrapper).
-- Using library component without wrapper.
-- Modifying library's source files.
-- Using library for simple widgets that are part of project's own design system.
+- Importing library components directly from feature code (always go through the wrapper).
+- Using a library component without a wrapper.
+- Modifying the library's source files.
+- Using the library for simple widgets that are part of the project's own design system.
 
 ---
 
 ## 16. Icons
 
-If project uses custom icon set (typically loaded from design system):
+If the project uses a custom icon set (typically loaded from a design system):
 - SVGs live in `src/assets/icons/`
-- Stroke-based SVGs pre-processed to filled paths using `oslllo-svg-fixer` so they render in webfonts
-- Webfont generated using `fantasticon` with prefix and name defined in design contract (when available)
+- Stroke-based SVGs are pre-processed to filled paths using `oslllo-svg-fixer` so they render in webfonts
+- A webfont is generated using `fantasticon` with the prefix and name defined in the design contract (when available)
 - Components reference icons via `<i class="{prefix}-{name}"></i>` — never as inline SVG or third-party icon library
-- Phosphor, Lucide, Heroicons, Font Awesome, and other generic icon libraries forbidden in projects with custom icon set
-- For projects without custom set: choose one library and stick with it; do not mix
+- Phosphor, Lucide, Heroicons, Font Awesome, and other generic icon libraries are forbidden in projects with a custom icon set
+- For projects without a custom set: choose one library and stick with it; do not mix
 
 ---
 
@@ -344,8 +344,8 @@ If project uses custom icon set (typically loaded from design system):
 - All images have meaningful `alt` text or `alt=""` if decorative.
 - Keyboard navigation works for every interactive component.
 - Color contrast meets WCAG AA minimum.
-- ARIA attributes used only when semantic HTML cannot express role.
-- `@angular-eslint/template/no-positive-tabindex`, `@angular-eslint/template/click-events-have-key-events`, and related rules enabled.
+- ARIA attributes are used only when semantic HTML cannot express the role.
+- `@angular-eslint/template/no-positive-tabindex`, `@angular-eslint/template/click-events-have-key-events`, and related rules are enabled.
 
 ---
 
@@ -370,6 +370,6 @@ If project uses custom icon set (typically loaded from design system):
 - Inline base64 images with `NgOptimizedImage`
 - Heavy computation or `new Date()` in templates
 - Mixing icon libraries
-- Using third-party icon library when project has its own
+- Using a third-party icon library when the project has its own
 - Hardcoded colors, spacing, radius, or font sizes in component SCSS (always reference tokens)
 - Skipping `track` in `@for` blocks

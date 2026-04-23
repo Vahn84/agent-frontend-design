@@ -10,7 +10,7 @@ Replace custom components with library equivalents (PrimeReact, PrimeNG, MUI, Ch
 ## Phases
 
 ### A. Check prerequisite
-Read `meta.yml`. If `library.name` null → STOP + ask user "which library? (PrimeReact/MUI/AntD/Chakra/custom-stay)". If user picks library, install it + update meta.
+Read `meta.yml`. If `library.name` null → STOP + ask user "which library? (PrimeReact/MUI/AntD/Chakra/custom-stay)". If user picks a library, install it + update meta.
 
 ### B. Load override knowledge
 Read `agents/library-overrides/<library>.md`. Contains: library's component catalog, install imports, prop mapping, style override mechanism (theme / CSS vars / PassThrough / sx / styled()), sample overrides for common components (Button, DataTable, Checkbox, Switch, Input, Dialog, Paginator).
@@ -20,8 +20,8 @@ Orchestrator MUST load this before emitting any wire plan.
 ### C. Scan screen
 Target screen (from `$ARGUMENTS`) or all screens:
 - Read `design-contract/components/*.yml`
-- Read screen source + component imports
-- For each imported custom component, check if library has equivalent:
+- Read screen source + its component imports
+- For each imported custom component, check if library has an equivalent:
   - Match by semantic role (button, table, input, toggle, checkbox, date-picker, modal, paginator, tooltip)
   - Confirm via library's component catalog in override knowledge
 
@@ -57,7 +57,7 @@ For each wired component:
 For each wired component, spawn build-component agent with UPDATED slice (classification now library-wrapped). Agent follows R9 — imports library wrapper, applies overrides from `agents/library-overrides/<lib>.md` to match Figma spec.
 
 ### H. Update screen
-If screen imports custom component by name, no change needed (same export name). If screen used raw HTML (`<input type="checkbox">`) where wrapper now exists, R14 applies — replace with wrapper.
+If the screen imports the custom component by name, no change needed (same export name). If screen used raw HTML (`<input type="checkbox">`) where wrapper now exists, R14 applies — replace with wrapper.
 
 ### I. Validate
 `node scripts/validate.mjs --target <screen-file> --spec <slice> --url <dev> --full`
@@ -73,5 +73,5 @@ Fidelity before/after captured in FIXLOG.
 ## Rules
 - R9 library-wrapped → import wrapper, do not build custom
 - R14 pages must USE wrappers, not raw HTML (check-wrappers.mjs enforces)
-- R23 never silently skip failed wiring — rollback + report
-- Agent MUST read `agents/library-overrides/<lib>.md` before wiring. Skipping = fidelity regression risk.
+- R23 never silently skip a failed wiring — rollback + report
+- Agent MUST read `agents/library-overrides/<lib>.md` before wiring. Skipping it = fidelity regression risk.

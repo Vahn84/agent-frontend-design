@@ -31,6 +31,60 @@ import { buildTokenMap, collectUnresolvedKeys, slugify } from '../lib/tokens.mjs
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
 
+// ---------- drop tracker (R49) ----------
+// Audit-scope accumulator. Any code path that silently ignores a non-default Figma
+// field must push to this list. Flushed to `design-contract/pages/<slug>/review.yml`
+// under `dropped_fields[]`. Build halts when any entry present unless user acks via
+// overrides.yml (R49).
+const DROPPED_FIELDS = [];
+function recordDrop(entry) {
+  if (!entry || !entry.nodeId) return;
+  DROPPED_FIELDS.push({
+    nodeId: entry.nodeId,
+    nodeName: entry.nodeName ?? null,
+    field: entry.field,
+    rawValue: entry.rawValue ?? null,
+    reason: entry.reason ?? 'silently dropped',
+  });
+}
+
+// R49 helper: derive R29 percentage crop from a Figma 2x3 affine `imageTransform`.
+// Returns { imageLeftPct, imageTopPct, imageWidthPct, imageHeightPct, derivedFrom }.
+// If transform is null/identity OR malformed → returns default 0/0/100/100 marked
+// `derivedFrom: 'default'` (no drop recorded — identity is correctly no-op).
+function deriveImageCrop(imageTransform) {
+  if (!Array.isArray(imageTransform) || imageTransform.length !== 2) {
+    return { imageLeftPct: 0, imageTopPct: 0, imageWidthPct: 100, imageHeightPct: 100, derivedFrom: 'default' };
+  }
+  const [r0, r1] = imageTransform;
+  if (!Array.isArray(r0) || r0.length !== 3 || !Array.isArray(r1) || r1.length !== 3) {
+    return { imageLeftPct: 0, imageTopPct: 0, imageWidthPct: 100, imageHeightPct: 100, derivedFrom: 'malformed' };
+  }
+  const [sx, , tx] = r0;
+  const [, sy, ty] = r1;
+  if (!isFinite(sx) || !isFinite(sy) || sx === 0 || sy === 0) {
+    return { imageLeftPct: 0, imageTopPct: 0, imageWidthPct: 100, imageHeightPct: 100, derivedFrom: 'invalid-scale' };
+  }
+  // Identity check — fast path.
+  if (Math.abs(sx - 1) < 1e-6 && Math.abs(sy - 1) < 1e-6 && Math.abs(tx) < 1e-6 && Math.abs(ty) < 1e-6) {
+    return { imageLeftPct: 0, imageTopPct: 0, imageWidthPct: 100, imageHeightPct: 100, derivedFrom: 'identity' };
+  }
+  // Figma STRETCH + imageTransform: source image sampled by 2x3 matrix to fill container.
+  // Inverse yields rendered-image extent inside the container as percentages.
+  const widthPct = 100 / sx;
+  const heightPct = 100 / sy;
+  const leftPct = -tx / sx * 100;
+  const topPct = -ty / sy * 100;
+  const round = (n) => Math.round(n * 100) / 100;
+  return {
+    imageLeftPct: round(leftPct),
+    imageTopPct: round(topPct),
+    imageWidthPct: round(widthPct),
+    imageHeightPct: round(heightPct),
+    derivedFrom: 'imageTransform',
+  };
+}
+
 // ---------- PrimeReact classification map (R9) ----------
 // Name patterns used in Figma → PrimeReact library component + import path.
 const PRIMEREACT_MAP = [
@@ -53,13 +107,134 @@ const PRIMEREACT_MAP = [
   { pattern: /^tooltip\b/i, libraryComponent: 'Tooltip', importPath: 'primereact/tooltip' },
   { pattern: /^datepicker\b/i, libraryComponent: 'Calendar', importPath: 'primereact/calendar', wrappedPrimitive: 'datepicker' },
   { pattern: /^calendar\b/i, libraryComponent: 'Calendar', importPath: 'primereact/calendar', wrappedPrimitive: 'datepicker' },
-  { pattern: /^table\b/i, libraryComponent: 'DataTable', importPath: 'primereact/datatable', wrappedPrimitive: 'table' },
-  { pattern: /^datatable\b/i, libraryComponent: 'DataTable', importPath: 'primereact/datatable', wrappedPrimitive: 'table' },
+  { pattern: /^(table|tabella|datatable|datagrid|elenco|griglia)\b/i, libraryComponent: 'DataTable', importPath: 'primereact/datatable', wrappedPrimitive: 'table' },
   { pattern: /^slider\b/i, libraryComponent: 'Slider', importPath: 'primereact/slider', wrappedPrimitive: 'slider' },
   { pattern: /^chip\b/i, libraryComponent: 'Chip', importPath: 'primereact/chip' },
   { pattern: /^tag\b/i, libraryComponent: 'Tag', importPath: 'primereact/tag' },
   { pattern: /^badge\b/i, libraryComponent: 'Badge', importPath: 'primereact/badge' },
 ];
+
+// ---------- @role= → library mapping ----------
+// Designer-authored tags in Figma component description override name-based classification.
+// Format: line(s) containing `@role=<role>` or `@primereact=<ComponentName>`.
+const ROLE_MAP = {
+  table: { libraryComponent: 'DataTable', importPath: 'primereact/datatable', wrappedPrimitive: 'table' },
+  datatable: { libraryComponent: 'DataTable', importPath: 'primereact/datatable', wrappedPrimitive: 'table' },
+  button: { libraryComponent: 'Button', importPath: 'primereact/button', wrappedPrimitive: 'button' },
+  iconbutton: { libraryComponent: 'Button', importPath: 'primereact/button', wrappedPrimitive: 'button' },
+  input: { libraryComponent: 'InputText', importPath: 'primereact/inputtext', wrappedPrimitive: 'input' },
+  textarea: { libraryComponent: 'InputTextarea', importPath: 'primereact/inputtextarea', wrappedPrimitive: 'textarea' },
+  checkbox: { libraryComponent: 'Checkbox', importPath: 'primereact/checkbox', wrappedPrimitive: 'checkbox' },
+  radio: { libraryComponent: 'RadioButton', importPath: 'primereact/radiobutton', wrappedPrimitive: 'radio' },
+  switch: { libraryComponent: 'InputSwitch', importPath: 'primereact/inputswitch', wrappedPrimitive: 'switch' },
+  toggle: { libraryComponent: 'InputSwitch', importPath: 'primereact/inputswitch', wrappedPrimitive: 'switch' },
+  select: { libraryComponent: 'Dropdown', importPath: 'primereact/dropdown', wrappedPrimitive: 'select' },
+  dropdown: { libraryComponent: 'Dropdown', importPath: 'primereact/dropdown', wrappedPrimitive: 'select' },
+  dialog: { libraryComponent: 'Dialog', importPath: 'primereact/dialog' },
+  modal: { libraryComponent: 'Dialog', importPath: 'primereact/dialog' },
+  tooltip: { libraryComponent: 'Tooltip', importPath: 'primereact/tooltip' },
+  datepicker: { libraryComponent: 'Calendar', importPath: 'primereact/calendar', wrappedPrimitive: 'datepicker' },
+  calendar: { libraryComponent: 'Calendar', importPath: 'primereact/calendar', wrappedPrimitive: 'datepicker' },
+  slider: { libraryComponent: 'Slider', importPath: 'primereact/slider', wrappedPrimitive: 'slider' },
+  chip: { libraryComponent: 'Chip', importPath: 'primereact/chip' },
+  tag: { libraryComponent: 'Tag', importPath: 'primereact/tag' },
+  badge: { libraryComponent: 'Badge', importPath: 'primereact/badge' },
+};
+
+function parseDescriptionTags(description) {
+  if (!description || typeof description !== 'string') return null;
+  const roleMatch = description.match(/@role\s*=\s*([a-zA-Z][a-zA-Z0-9_-]*)/i);
+  const prMatch = description.match(/@primereact\s*=\s*([a-zA-Z][a-zA-Z0-9]*)/i);
+  return {
+    role: roleMatch ? roleMatch[1].toLowerCase() : null,
+    primereact: prMatch ? prMatch[1] : null,
+  };
+}
+
+function classifyFromRole(tags, libraryName) {
+  if (!tags) return null;
+  const lib = (libraryName || '').toLowerCase();
+  if (tags.role && ROLE_MAP[tags.role]) {
+    const entry = ROLE_MAP[tags.role];
+    return { kind: 'library-wrapped', ...entry, via: '@role' };
+  }
+  if (tags.primereact && lib === 'primereact') {
+    // Best-effort reverse lookup via role map (most PrimeReact names match).
+    for (const [role, entry] of Object.entries(ROLE_MAP)) {
+      if (entry.libraryComponent.toLowerCase() === tags.primereact.toLowerCase()) {
+        return { kind: 'library-wrapped', ...entry, via: '@primereact' };
+      }
+    }
+  }
+  return null;
+}
+
+// Structural heuristic: detect a "table-like" shape on a variant node tree.
+// Fires when a VERTICAL container holds ≥2 HORIZONTAL children whose leaf counts match.
+function looksLikeTable(node) {
+  if (!node || node.direction !== 'column') return false;
+  const rows = (node.children || []).filter((c) => c.direction === 'row');
+  if (rows.length < 2) return false;
+  const childCounts = rows.map((r) => (r.children || []).length);
+  const maxC = Math.max(...childCounts);
+  const minC = Math.min(...childCounts);
+  if (maxC < 2) return false;
+  // Tolerate ±1 (header may have extra action cell).
+  if (maxC - minC > 1) return false;
+  // Rows should share similar height (±4px) — screens out unrelated stacked frames.
+  const heights = rows.map((r) => r.dimensions?.height).filter((h) => typeof h === 'number');
+  if (heights.length >= 2) {
+    const med = heights.sort((a, b) => a - b)[Math.floor(heights.length / 2)];
+    const outliers = heights.filter((h) => Math.abs(h - med) > 4).length;
+    if (outliers > heights.length / 2) return false;
+  }
+  return true;
+}
+
+// Overrides lookup: match by componentKey or nodeId.
+function classifyFromOverrides(overrides, componentKey, nodeId) {
+  if (!overrides?.classifications) return null;
+  for (const rule of overrides.classifications) {
+    const m = rule.match || {};
+    if (m.componentKey && m.componentKey === componentKey) return { ...rule.classification, via: 'overrides' };
+    if (m.nodeId && m.nodeId === nodeId) return { ...rule.classification, via: 'overrides' };
+  }
+  return null;
+}
+
+// Precedence: overrides > @role/@primereact > regex > structural heuristic > custom.
+// Returns { classification, suspected } where suspected flags a custom-classified cluster
+// whose shape looked like a table (caller writes it to review.yml).
+function classifyComponent({ rawName, description, componentKey, nodeId, variantNode, libraryName, overrides }) {
+  const ov = classifyFromOverrides(overrides, componentKey, nodeId);
+  if (ov) return { classification: ov, suspected: null };
+
+  const tags = parseDescriptionTags(description);
+  const byRole = classifyFromRole(tags, libraryName);
+  if (byRole) return { classification: byRole, suspected: null };
+
+  const byName = classifyByName(rawName, libraryName);
+  if (byName.kind === 'library-wrapped') return { classification: { ...byName, via: 'regex' }, suspected: null };
+
+  // Structural heuristic — only promote if library = primereact (avoid speculative classification).
+  if ((libraryName || '').toLowerCase() === 'primereact' && looksLikeTable(variantNode)) {
+    return {
+      classification: {
+        kind: 'library-wrapped',
+        libraryComponent: 'DataTable',
+        importPath: 'primereact/datatable',
+        wrappedPrimitive: 'table',
+        via: 'heuristic',
+      },
+      suspected: null,
+    };
+  }
+
+  // Even if not promoted (different library or no library), still flag table-shape
+  // under `suspected` so review.yml warns the user.
+  const suspected = looksLikeTable(variantNode) ? { reason: 'uniform-row VERTICAL/HORIZONTAL shape', heuristic: 'table' } : null;
+  return { classification: { kind: 'custom' }, suspected };
+}
 
 function classifyByName(rawName, libraryName) {
   if (!libraryName || libraryName.toLowerCase() !== 'primereact') return { kind: 'custom' };
@@ -137,17 +312,27 @@ async function main() {
   if (unresolved.length) log(`  ⚠ ${unresolved.length} unresolved lib var key(s): ${unresolved.slice(0, 3).join(', ')}${unresolved.length > 3 ? ', ...' : ''}`);
   log(`  → ${tokensMeta.unique} unique tokens (source=${tokensMeta.source})`);
 
+  // Load overrides.yml (manual classification escape hatch). Optional.
+  const overridesPath = join(CONTRACT_ROOT, 'overrides.yml');
+  let overrides = null;
+  if (await exists(overridesPath)) {
+    try { overrides = YAML.load(await readFile(overridesPath, 'utf8')) || null; }
+    catch (err) { log(`  ⚠ overrides.yml parse failed: ${err.message}`); }
+    if (overrides?.classifications?.length) log(`  overrides: ${overrides.classifications.length} rule(s) loaded`);
+  }
+
   // 3. Screens (enriched subtrees).
   log('phase 2 — screens');
   // Only base screens get their own screens/ file. Overlays absorbed into modals[] (A2 6f).
   // Since Login page has 1 screen, this collapses to single-screen path.
   const baseScreens = pageEntry.screens.filter((s) => s.role === 'base');
   const enrichedScreens = [];
+  const componentsMeta = {};
   for (const s of baseScreens) {
-    const enriched = await auditScreen(s, tokenMap);
+    const enriched = await auditScreen(s, tokenMap, componentsMeta);
     enrichedScreens.push(enriched);
   }
-  log(`  → ${enrichedScreens.length} screen(s)`);
+  log(`  → ${enrichedScreens.length} screen(s), ${Object.keys(componentsMeta).length} component descriptions`);
 
   // 4. Typography.
   log('phase 3 — typography');
@@ -169,14 +354,17 @@ async function main() {
 
   // 6. Components (derived from instance clusters in this page).
   log('phase 5 — components');
-  const components = clusterComponents(enrichedScreens, {
+  const { components, suspected } = clusterComponents(enrichedScreens, {
     iconNameByComponentKey: iconsData._iconNameByComponentKey || {},
     libraryName: LIBRARY_NAME,
     tokenMap,
     typographyKeys: new Set(Object.keys(typography.styles)),
+    componentsMeta,
+    overrides,
   });
   const variantCount = components.reduce((a, c) => a + c.variants.length, 0);
   log(`  → ${components.length} components (${variantCount} variants)`);
+  if (suspected.length) log(`  ⚠ ${suspected.length} suspected unclassified table(s) — see review.yml`);
 
   // 7. Write contract.
   log('phase 6 — write contract');
@@ -190,6 +378,7 @@ async function main() {
     components,
     assets,
     libraryFileKey: iconsData.source.fileKey !== FILE_KEY ? iconsData.source.fileKey : null,
+    suspected,
   });
   log(`  → wrote ${PAGE_DIR}/`);
 
@@ -202,14 +391,39 @@ async function main() {
 
 // ---------- tokens ----------
 async function buildPageTokenMap(fileKey) {
-  let vars = null;
+  let mainVars = null;
   try {
-    vars = await client.getLocalVariables(fileKey);
+    mainVars = await client.getLocalVariables(fileKey);
   } catch (err) {
     if (!(err instanceof FigmaError && (err.status === 403 || err.status === 404))) throw err;
   }
-  if (vars) {
-    const tokenMap = buildTokenMap(vars);
+  if (mainVars) {
+    // First pass: main-file variables only.
+    let tokenMap = buildTokenMap(mainVars);
+    // R48: chase cross-file (library) aliases. Enterprise PAT required for
+    // /variables/published on library files. Discovers library fileKeys via the
+    // subscribed aliases in the main token map, falls back to component remote scan.
+    const unresolved = collectUnresolvedKeys(tokenMap);
+    if (unresolved.length) {
+      log(`  chasing ${unresolved.length} unresolved library variable key(s)...`);
+      const libKeys = await discoverLibraryFileKeysForAliases(fileKey);
+      const libResponses = [mainVars];
+      for (const lib of libKeys) {
+        try {
+          // Prefer /variables/published (works for consumed libraries).
+          const libVars = await client.getPublishedVariables(lib).catch(() => null);
+          if (libVars) { libResponses.push(libVars); continue; }
+          // Fallback: /variables/local if the PAT has edit access to the library file.
+          const libLocal = await client.getLocalVariables(lib).catch(() => null);
+          if (libLocal) libResponses.push(libLocal);
+        } catch {}
+      }
+      if (libResponses.length > 1) {
+        tokenMap = buildTokenMap(libResponses);
+        const stillUnresolved = collectUnresolvedKeys(tokenMap);
+        log(`  resolved ${unresolved.length - stillUnresolved.length}/${unresolved.length} library keys across ${libResponses.length - 1} lib file(s)`);
+      }
+    }
     const deduped = dedupTokenMapByName(tokenMap);
     return { tokenMap, tokensMeta: { source: 'variables', unique: Object.keys(deduped).length } };
   }
@@ -218,6 +432,20 @@ async function buildPageTokenMap(fileKey) {
   const styles = await client.getFileStyles(fileKey).catch(() => ({ meta: { styles: [] } }));
   const seeded = seedTokenMapFromStyles(styles);
   return { tokenMap: seeded, tokensMeta: { source: 'styles', unique: Object.keys(dedupTokenMapByName(seeded)).length } };
+}
+
+async function discoverLibraryFileKeysForAliases(fileKey) {
+  // Enumerate remote components in the file, group by component key, fetch /v1/components/<key>
+  // to get `meta.file_key` (cap 12 probes for budget).
+  try {
+    const file = await client.getFile(fileKey, { depth: 3 });
+    const remoteKeys = [...new Set(Object.values(file.components ?? {}).filter((c) => c.remote && c.key).map((c) => c.key))];
+    const sample = remoteKeys.slice(0, 12);
+    const results = await Promise.all(sample.map(async (k) => {
+      try { const resp = await client.getComponent(k); return resp?.meta?.file_key ?? null; } catch { return null; }
+    }));
+    return [...new Set(results.filter((k) => k && k !== fileKey))];
+  } catch { return []; }
 }
 
 function seedTokenMapFromStyles(stylesResp) {
@@ -281,21 +509,49 @@ function mapTokenType(type) {
 }
 
 // ---------- screens ----------
-async function auditScreen(screen, tokenMap) {
+async function auditScreen(screen, tokenMap, componentsMetaOut) {
   const safeId = screen.nodeId.replace(/[:/]/g, '_');
   const cachePath = join(CACHE_DIR, `${safeId}-enriched.json`);
   if (!FORCE_REFRESH && await exists(cachePath)) {
-    return JSON.parse(await readFile(cachePath, 'utf8'));
+    const cached = JSON.parse(await readFile(cachePath, 'utf8'));
+    // Re-hydrate componentsMeta from cached screen (recorded on prior run).
+    if (cached._componentsMeta && componentsMetaOut) {
+      for (const [k, v] of Object.entries(cached._componentsMeta)) {
+        if (!componentsMetaOut[k]) componentsMetaOut[k] = v;
+      }
+    }
+    return cached;
   }
   const nodesRes = await client.getFileNodes(FILE_KEY, screen.nodeId);
   const entry = nodesRes.nodes[screen.nodeId];
   if (!entry) fail(`screen ${screen.nodeId} not in REST response`);
+  // Aggregate componentsMeta (descriptions live here). R-table: designer @role= tags parsed from description.
+  if (componentsMetaOut && entry.components) {
+    for (const [id, meta] of Object.entries(entry.components)) {
+      if (!meta?.key) continue;
+      if (!componentsMetaOut[meta.key]) {
+        componentsMetaOut[meta.key] = { key: meta.key, name: meta.name, description: meta.description || '', componentSetId: meta.componentSetId || null };
+      }
+    }
+  }
+  if (componentsMetaOut && entry.componentSets) {
+    for (const [id, meta] of Object.entries(entry.componentSets)) {
+      if (!meta?.key) continue;
+      if (!componentsMetaOut[meta.key]) {
+        componentsMetaOut[meta.key] = { key: meta.key, name: meta.name, description: meta.description || '', isSet: true };
+      }
+    }
+  }
   const tree = transformNode(entry.document, {
     tokenMap,
     components: entry.components,
     componentSets: entry.componentSets,
     styles: entry.styles,
   });
+  // Snapshot of this screen's slice of componentsMeta so cached reads stay informative.
+  const meta = {};
+  for (const m of Object.values(entry.components || {})) { if (m?.key) meta[m.key] = { key: m.key, name: m.name, description: m.description || '', componentSetId: m.componentSetId || null }; }
+  for (const m of Object.values(entry.componentSets || {})) { if (m?.key) meta[m.key] = { key: m.key, name: m.name, description: m.description || '', isSet: true }; }
   const enriched = {
     screenId: screen.nodeId,
     name: screen.name,
@@ -305,6 +561,7 @@ async function auditScreen(screen, tokenMap) {
     dimensions: { width: screen.width, height: screen.height },
     layoutSizing: tree.layoutSizing ?? { horizontal: 'FIXED', vertical: 'FIXED' },
     tree,
+    _componentsMeta: meta,
   };
   await writeFile(cachePath, JSON.stringify(enriched));
   return enriched;
@@ -562,10 +819,21 @@ function clusterComponents(enrichedScreens, ctx) {
   }
 
   const components = [];
+  const suspected = [];
   const usedNames = new Set();
   for (const [key, g] of groups) {
     const baseName = deriveComponentName(g.rawName);
-    const classification = classifyByName(g.rawName, ctx.libraryName);
+    const meta = ctx.componentsMeta?.[key] || null;
+    const firstInstanceNode = g.instances[0]?.node;
+    const { classification, suspected: susp } = classifyComponent({
+      rawName: g.rawName,
+      description: meta?.description || '',
+      componentKey: key,
+      nodeId: g.instances[0].instanceNodeId,
+      variantNode: firstInstanceNode,
+      libraryName: ctx.libraryName,
+      overrides: ctx.overrides,
+    });
     const variants = deriveVariants(g.instances, ctx);
     // Skip any component whose variants are all empty (no tree decoration observed).
     // R8: must have at least 'default'.
@@ -579,8 +847,20 @@ function clusterComponents(enrichedScreens, ctx) {
       variants,
       mainComponentKey: key,
     });
+    if (susp) {
+      suspected.push({
+        componentKey: key,
+        componentName: baseName,
+        rawName: g.rawName,
+        nodeId: g.instances[0].instanceNodeId,
+        reason: susp.reason,
+        heuristic: susp.heuristic,
+        instanceCount: g.instances.length,
+        action: 'add to overrides.yml with classification.libraryComponent=DataTable, or rename Figma component with Table/DataTable prefix, or add `@role=table` to component description',
+      });
+    }
   }
-  return components;
+  return { components, suspected };
 }
 
 function deriveComponentName(raw) {
@@ -670,15 +950,31 @@ function buildVariant(name, node, instances, ctx) {
       }
     }
     if (child.imageFrame) {
+      const crop = deriveImageCrop(child.imageFrame.imageTransform);
+      if (crop.derivedFrom === 'malformed' || crop.derivedFrom === 'invalid-scale') {
+        recordDrop({
+          nodeId: child.id,
+          nodeName: child.name,
+          field: 'imageTransform',
+          rawValue: child.imageFrame.imageTransform,
+          reason: `could not derive R29 crop pct (${crop.derivedFrom})`,
+        });
+      }
+      const rawScale = child.imageFrame.scaleMode;
+      const knownScales = ['FIT', 'FILL', 'CROP', 'TILE', 'STRETCH'];
+      if (rawScale && !knownScales.includes(rawScale)) {
+        recordDrop({ nodeId: child.id, nodeName: child.name, field: 'scaleMode', rawValue: rawScale, reason: 'unknown scaleMode' });
+      }
+      const SCALE_MAP = { FIT: 'FIT', FILL: 'FILL', CROP: 'CROP', TILE: 'TILE', STRETCH: 'FILL' };
       imageFrames.push({
         slot: slugifyName(child.name || 'image'),
         assetName: child._assetName || slugifyName(child.name || 'image'),
         container: { widthPx: child.dimensions?.width ?? 0, heightPx: child.dimensions?.height ?? 0 },
-        imageWidthPct: 100,
-        imageHeightPct: 100,
-        imageLeftPct: 0,
-        imageTopPct: 0,
-        scaleMode: ['FIT', 'FILL', 'CROP', 'TILE'].includes(child.imageFrame.scaleMode) ? child.imageFrame.scaleMode : 'FILL',
+        imageWidthPct: crop.imageWidthPct,
+        imageHeightPct: crop.imageHeightPct,
+        imageLeftPct: crop.imageLeftPct,
+        imageTopPct: crop.imageTopPct,
+        scaleMode: SCALE_MAP[rawScale] || 'FILL',
       });
     }
     const fill = child.tokenRefs?.fills?.[0];
@@ -712,7 +1008,7 @@ function buildVariant(name, node, instances, ctx) {
 
 // ---------- write contract ----------
 async function writeContract(params) {
-  const { pageEntry, pageNodeId, tokenMap, typography, iconsData, enrichedScreens, components, assets, libraryFileKey } = params;
+  const { pageEntry, pageNodeId, tokenMap, typography, iconsData, enrichedScreens, components, assets, libraryFileKey, suspected } = params;
 
   const dedupedTokens = dedupTokenMapByName(tokenMap);
 
@@ -790,6 +1086,24 @@ async function writeContract(params) {
   for (const c of components) {
     await writeYaml(join(componentsDir, `${slugify(c.name)}.yml`), c);
   }
+
+  // review.yml — surface unclassified clusters + silently-dropped fields (R49).
+  const hasSuspected = Array.isArray(suspected) && suspected.length;
+  const hasDrops = DROPPED_FIELDS.length > 0;
+  if (hasSuspected || hasDrops) {
+    const reviewOut = {
+      schema: 'review/v1',
+      page: pageEntry.slug,
+      generatedAt: new Date().toISOString(),
+      note: 'Blocks build per R41/R49 until user acks via overrides.yml or fixes the source. Clear entries by resolving the referenced node in Figma + re-running audit, or by adding an ack in overrides.yml.',
+    };
+    if (hasSuspected) reviewOut.suspected = suspected;
+    if (hasDrops) {
+      reviewOut.dropped_fields = DROPPED_FIELDS.slice();
+      reviewOut.dropped_fields_note = 'R49: audit encountered non-default Figma fields that couldn\'t be cleanly derived into the contract. Each entry names the node + field + raw value + reason. Address by (a) fixing the handler to support the value, or (b) adding an explicit ack under overrides.yml acked_drops[].';
+    }
+    await writeYaml(join(PAGE_DIR, 'review.yml'), reviewOut);
+  }
 }
 
 function cleanTree(node, ctx) {
@@ -803,6 +1117,17 @@ function cleanTree(node, ctx) {
 
   for (const k of ['alignItems', 'justifyContent', 'direction']) {
     if (out[k] == null) delete out[k];
+  }
+
+  // Normalize kind to schema-allowed enum. Figma LINE → 'line' is not in the
+  // screen schema enum; coerce to 'vector' for downstream handling.
+  if (out.kind === 'line') out.kind = 'vector';
+
+  // Normalize non-uniform corner radii object → max corner (schema accepts
+  // number|string|null). transformNode emits { tl, tr, br, bl } when corners differ.
+  if (out.radius && typeof out.radius === 'object' && !Array.isArray(out.radius)) {
+    const { tl = 0, tr = 0, br = 0, bl = 0 } = out.radius;
+    out.radius = Math.max(tl, tr, br, bl) || null;
   }
 
   const rootColorToken = tokenRefs?.fills?.[0]?.name;
@@ -839,15 +1164,23 @@ function cleanTree(node, ctx) {
   if (node.imageFrame) {
     const assetName = _assetName || slugifyName(node.name || 'image');
     if (ctx.assetNames.has(assetName)) {
+      const crop = deriveImageCrop(node.imageFrame.imageTransform);
+      if (crop.derivedFrom === 'malformed' || crop.derivedFrom === 'invalid-scale') {
+        recordDrop({ nodeId: node.id, nodeName: node.name, field: 'imageTransform', rawValue: node.imageFrame.imageTransform, reason: `could not derive R29 crop pct (${crop.derivedFrom})` });
+      }
+      const rawScale = node.imageFrame.scaleMode;
       const SCALE_MAP = { FIT: 'FIT', FILL: 'FILL', CROP: 'CROP', TILE: 'TILE', STRETCH: 'FILL' };
+      if (rawScale && !SCALE_MAP[rawScale]) {
+        recordDrop({ nodeId: node.id, nodeName: node.name, field: 'scaleMode', rawValue: rawScale, reason: 'unknown scaleMode' });
+      }
       out.imageFrame = {
         assetName,
         container: { widthPx: node.dimensions?.width ?? 0, heightPx: node.dimensions?.height ?? 0 },
-        scaleMode: SCALE_MAP[node.imageFrame.scaleMode] || 'FILL',
-        imageLeftPct: 0,
-        imageTopPct: 0,
-        imageWidthPct: 100,
-        imageHeightPct: 100,
+        scaleMode: SCALE_MAP[rawScale] || 'FILL',
+        imageLeftPct: crop.imageLeftPct,
+        imageTopPct: crop.imageTopPct,
+        imageWidthPct: crop.imageWidthPct,
+        imageHeightPct: crop.imageHeightPct,
       };
     } else {
       delete out.imageFrame;

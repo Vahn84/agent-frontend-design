@@ -8,13 +8,13 @@
 Start if not running (`npm run dev` at project path). Wait for ready.
 
 ### A1. Wrapper check (R14, layer L0)
-`node scripts/check-wrappers.mjs --contract design-contract --src <app>/src` → grep for raw HTML primitives where library wrapper exists. FAIL here blocks all later layers — rebuild offending pages before proceeding.
+`node scripts/check-wrappers.mjs --contract design-contract --src <app>/src` → grep for raw HTML primitives where a library wrapper exists. FAIL here blocks all later layers — rebuild offending pages before proceeding.
 
 ### A2. Glyph verify
 If `icons.yml` strategy=webfont: `node scripts/verify-glyphs.mjs --url <dev-url>` → FAIL on glyph mismatch (R13).
 
 ### B. Serial screen validate (full, R18)
-For each screen route: spawn `VALIDATE.md --full`. Cap 1 at a time (single Playwright context preserves pixel cache). No per-component validate pass — `VALIDATE.md` attributes failing bboxes back to hosting components via `data-component`, surfaced as `failingComponents` in output.
+For each screen route: spawn `VALIDATE.md --full`. Cap 1 at a time (single Playwright context preserves pixel cache). No per-component validate pass — `VALIDATE.md` attributes failing bboxes back to their hosting components via `data-component`, surfaced as `failingComponents` in the output.
 
 ### C. Report
 Table:

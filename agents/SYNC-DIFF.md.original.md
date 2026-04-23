@@ -43,7 +43,7 @@ Print table: change → affected files → action (rebuild / update token file /
 - `design-contract-next/` (not promoted yet — orchestrator gates promotion)
 - Rebuild targets list
 
-Orchestrator then: promote `design-contract-next` → `design-contract`, spawn build-component / build-screen agents for impacted files, then run `VALIDATE.md --full` on every screen whose tree includes impacted component (R18 — no per-component validate pass).
+Orchestrator then: promote `design-contract-next` → `design-contract`, spawn build-component / build-screen agents for impacted files, then run `VALIDATE.md --full` on every screen whose tree includes an impacted component (R18 — no per-component validate pass).
 
 ## Forbidden
 - Promoting contract before user confirms destructive changes (token_removed, component_removed)

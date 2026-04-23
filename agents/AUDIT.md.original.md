@@ -4,7 +4,7 @@
 
 Invoked by `/figma-audit` and as Phase 1 of `/figma-to-code`.
 
-Philosophy: **screens are source of truth.** Every visible decoration — text color, alignment, per-instance size, nested icon child — captured by walking screen tree, not enumerating component masters. Components **derived** from instance clusters observed across screens in single page. Library touched exactly once per page (batch-export icons page).
+Philosophy: **screens are the source of truth.** Every visible decoration — text color, alignment, per-instance size, nested icon child — is captured by walking the screen tree, not by enumerating component masters. Components are **derived** from the clusters of instances observed across screens in a single page. The library is touched exactly once per page (to batch-export the icons page).
 
 ## Two modes
 
@@ -15,9 +15,9 @@ Audit runs in **two stages** so big files aren't deep-walked up front:
 | **INDEX (A1)** | First touch, per file. Cheap. | `design-contract/index.yml` — pages + screens list, token/style counts | `scripts/audit-index.mjs` |
 | **PAGE (A2)** | On demand, per page. Deep. | `design-contract/pages/<slug>/{meta,tokens,typography,icons,components,screens}/...` | this agent |
 
-A1 is non-destructive — safe to re-run. A2 operates on one page at a time. Orchestrator picks page (user choice or auto-route). Further pages = additional A2 invocations; every page contract is self-contained.
+A1 is non-destructive — safe to re-run. A2 operates on one page at a time. Orchestrator picks the page (user choice or auto-route). Further pages = additional A2 invocations; every page contract is self-contained.
 
-`design-contract/index.yml` tracks `pages[].audited` so orchestrator knows which contracts exist.
+`design-contract/index.yml` tracks `pages[].audited` so the orchestrator knows which contracts exist.
 
 ## Tools
 
@@ -33,7 +33,7 @@ const client = createClient({ cacheDir: 'design-contract/.audit-cache/raw' });
 ```
 
 Key calls:
-- `client.getFile(fileKey, { depth })` — A1 page list + A2 library Icons page.
+- `client.getFile(fileKey, { depth })` — used by A1 for page list and A2 for library Icons page.
 - `client.getFileNodes(fileKey, [nodeId], { depth })` — screen subtree (A2) or page probe (A1).
 - `client.getLocalVariables(fileKey)` — once per file (Enterprise). Cached.
 - `client.getFileStyles(fileKey)` — non-Enterprise fallback.
@@ -46,7 +46,7 @@ Key calls:
 Two-layer cache:
 
 1. **Raw REST** — `lib/figma.mjs` writes response JSON under `design-contract/.audit-cache/raw/` (keyed by endpoint + params hash). Automatic, set via `createClient({ cacheDir })`. Shared across A1 + A2.
-2. **Enriched spec** — A2 writes post-`transformNode` enriched tree to `design-contract/.audit-cache/<screenNodeId>-enriched.json`. Hit → load from disk, skip re-walk.
+2. **Enriched spec** — A2 writes the post-`transformNode` enriched tree to `design-contract/.audit-cache/<screenNodeId>-enriched.json`. Hit → load from disk and skip re-walk.
 
 Cache invalidates on `--force-refresh`.
 
@@ -74,10 +74,10 @@ Input: `{ fileKey, pageNodeId, pageSlug, framework, styling, projectPath, librar
 Output root: `design-contract/pages/<pageSlug>/` (complete self-contained contract).
 
 ### 1. Parse URL / resolve page
-`parseFigmaUrl(url) → { fileKey, nodeId }`. If `nodeId` present and belongs to page (type CANVAS), use directly. Otherwise resolve chosen `pageSlug` via `design-contract/index.yml`.
+`parseFigmaUrl(url) → { fileKey, nodeId }`. If `nodeId` present and belongs to a page (type CANVAS), use directly. Otherwise resolve the chosen `pageSlug` via `design-contract/index.yml`.
 
 ### 2. Screen inventory (R4)
-From `index.yml`, read page's `screens[]`. Each entry already has `{ name, slug, nodeId, width, height, x }`. Sort by `x` ascending (already sorted by A1).
+From `index.yml`, read the page's `screens[]`. Each entry already has `{ name, slug, nodeId, width, height, x }`. Sort by `x` ascending (already sorted by A1).
 
 ### 3. Tokens (R6, R32)
 
@@ -86,7 +86,7 @@ const vars = await client.getLocalVariables(fileKey);
 const tokenMap = buildTokenMap(vars);     // { id → { cssVar, value, modes } }
 ```
 
-Per-node resolution inside `transformNode` via `resolveBoundVariables(node.boundVariables, tokenMap)`. Write `pages/<slug>/tokens.yml`:
+Per-node resolution happens inside `transformNode` via `resolveBoundVariables(node.boundVariables, tokenMap)`. Write `pages/<slug>/tokens.yml`:
 - Key = Figma variable path
 - `cssVar` = `--<collection-slug>-<name-slug>`
 - `value` = resolved value
@@ -94,32 +94,32 @@ Per-node resolution inside `transformNode` via `resolveBoundVariables(node.bound
 
 **Non-Enterprise fallback:** seed `tokens.yml` manually; resolve fills via `node.styles` style keys + `client.getFileStyles(fileKey)`.
 
-Tokens are file-global. A2 writes same map into every page's `tokens.yml` — cheap YAML, simplifies page self-containment.
+Tokens are file-global. A2 writes the same map into every page's `tokens.yml` — cheap YAML, simplifies page self-containment.
 
 ### 4. Typography from page screens
-Walk text nodes across page's screens. Each `transformNode` output includes `text.style = { fontFamily, fontWeight, fontSize, lineHeight, letterSpacing, textCase, italic }`. Dedupe by signature. Write `pages/<slug>/typography.yml`.
+Walk text nodes across this page's screens. Each `transformNode` output includes `text.style = { fontFamily, fontWeight, fontSize, lineHeight, letterSpacing, textCase, italic }`. Dedupe by signature. Write `pages/<slug>/typography.yml`.
 
 ### 5. Icons — screens-first (R2, R33)
 
-5a. **Collect icon nodes from page's screens.** Walk every enriched screen tree. Any `kind: 'vector'` node OR any instance whose only child is vector = icon occurrence. Record `{ screenNodeId, instanceNodeId, vectorNodeId, componentKey, visibleSizePx, name }`.
+5a. **Collect icon nodes from this page's screens.** Walk every enriched screen tree. Any `kind: 'vector'` node OR any instance whose only child is a vector is an icon occurrence. Record `{ screenNodeId, instanceNodeId, vectorNodeId, componentKey, visibleSizePx, name }`.
 
-5b. **Single library-touch (per file, shared via raw cache).** From any ONE icon's `componentRef.mainComponentKey`, `client.getComponent(key)` → `file_key`. Store as `meta.figma.libraryFileKey`. `client.getFile(libraryFileKey, { depth: 2 })` → find page named `Icons`. Raw cache means subsequent A2 runs on same file skip these calls.
+5b. **Single library-touch (per file, shared via raw cache).** From any ONE icon's `componentRef.mainComponentKey`, `client.getComponent(key)` → `file_key`. Store as `meta.figma.libraryFileKey`. `client.getFile(libraryFileKey, { depth: 2 })` → find page named `Icons`. Raw cache means subsequent A2 runs on the same file skip these calls.
 
 5c. **Batch export.** One `getImages` call per icon-page vector list. R23 — retry any null URL.
 
-5d. **Write `pages/<slug>/icons.yml`** with every icon from library Icons page (not just screen-referenced subset). Each icon: `name`, `vectorNodeId`, `viewBox`, and either `svgPath` or webfont `{ glyphCode, prefix, fontName }` per `meta.webfont`.
+5d. **Write `pages/<slug>/icons.yml`** with every icon from the library Icons page (not just screen-referenced subset). Each icon: `name`, `vectorNodeId`, `viewBox`, and either `svgPath` or webfont `{ glyphCode, prefix, fontName }` per `meta.webfont`.
 
 5e. Normalize via `scripts/normalize-icons.mjs --contract design-contract/pages/<slug>` (R25).
 
 ### 6. Screens — deep per-node capture (core, R1, R5, R32)
 
-For each screen in page (cached slug list):
+For each screen in the page (cached slug list):
 
 6a. `client.getFileNodes(fileKey, [screenId])` → `response.nodes[screenId].document` = raw subtree. One call per screen.
 
 6b. `const enriched = transformNode(rawNode, { tokenMap });` → full enriched tree.
 
-6c. Walk enriched tree. Per-node shape matches `schemas/screen.schema.json`. Record instance overrides (R32).
+6c. Walk enriched tree. Per-node shape matches `schemas/screen.schema.json` (unchanged from previous audit). Record instance overrides (R32).
 
 6d. Capture screen-level `mockData` (R3): every text/id/name/date/status/label verbatim from `text.content` nodes. Infer `dataDrivenStyles` for data-bound components.
 
@@ -129,19 +129,19 @@ For each screen in page (cached slug list):
 
 Before component derivation, collapse overlay-role screens into modal components on their base screens.
 
-**Preconditions:** every screen entry in `index.yml` carries `role` (base|overlay) and `overlayOf` (parent slug) from A1. A2 honors that as prior — but A1 only sees names + dimensions. A2 CONFIRMS or OVERRIDES via tree-diff before extracting modals.
+**Preconditions:** every screen entry in `index.yml` carries `role` (base|overlay) and `overlayOf` (parent slug) from A1. A2 honors that as a prior — but A1 only sees names + dimensions. A2 CONFIRMS or OVERRIDES via tree-diff before extracting modals.
 
-**Algorithm (per overlay screen, ordered by `overlayDepth` ASC so parents already processed):**
+**Algorithm (per overlay screen, ordered by `overlayDepth` ASC so parents are already processed):**
 
-1. Load enriched trees for overlay and its `overlayOf` base.
-2. **Subset check.** Walk base tree → collect stable signature set (nodeId + kind + name + layout hash) for every node. Walk overlay tree → same signature set. Compute `overlaySet − baseSet`. If delta is cohesive subtree (shares one common ancestor in overlay) AND `baseSet` is strict subset of `overlaySet` → confirmed modal.
-3. **Extract delta subtree.** Identify root of modal — usually top-level sibling in overlay's tree absent from base. Often shaped as `<backdrop layer> + <dialog frame>` or single floating frame.
+1. Load enriched trees for the overlay and its `overlayOf` base.
+2. **Subset check.** Walk base tree → collect a stable signature set (nodeId + kind + name + layout hash) for every node. Walk overlay tree → same signature set. Compute `overlaySet − baseSet`. If the delta is a cohesive subtree (shares one common ancestor in overlay) AND `baseSet` is a strict subset of `overlaySet` → confirmed modal.
+3. **Extract delta subtree.** Identify the root of the modal — usually a top-level sibling in the overlay's tree that is absent from base. Often shaped as `<backdrop layer> + <dialog frame>` or a single floating frame.
 4. **Write modal component** to `pages/<slug>/components/<modalName>.yml` with:
    - `classification.kind = "modal"`
    - `classification.modalOf = <baseSlug>`
-   - `variants[]` — each overlay sibling sharing same `overlayOf` base contributes one variant keyed by last segment of name (e.g. `Cambio urgenza` → variants `default`, `Urgenza ON`, `Urgenza OFF` via further overlayDepth chain).
-5. **Nested overlays (overlayDepth ≥ 2):** treated as **variants of parent modal**, not separate modal components. `Modale multiselezione/Cambio urgenza/Urgenza ON` → variant `Urgenza ON` of modal `Modale multiselezione Cambio urgenza`. Decision rule: if `overlayOf` points to another overlay → nested delta is variant extension of parent's modal spec. Merge into parent's `variants[]` rather than emit new component.
-6. **Attach to base screen** — append entry to `base.modals[]`:
+   - `variants[]` — each overlay sibling sharing the same `overlayOf` base contributes one variant keyed by the last segment of its name (e.g. `Cambio urgenza` → variants `default`, `Urgenza ON`, `Urgenza OFF` via further overlayDepth chain).
+5. **Nested overlays (overlayDepth ≥ 2):** treated as **variants of the parent modal**, not separate modal components. `Modale multiselezione/Cambio urgenza/Urgenza ON` → variant `Urgenza ON` of modal `Modale multiselezione Cambio urgenza`. Decision rule: if `overlayOf` points to another overlay → the nested delta is a variant extension of the parent's modal spec. Merge into the parent's `variants[]` rather than emit a new component.
+6. **Attach to base screen** — append an entry to `base.modals[]`:
    ```yaml
    modals:
      - name: Cambio owner
@@ -150,20 +150,20 @@ Before component derivation, collapse overlay-role screens into modal components
        variantName: default
        openTrigger: "…best-effort label…"
    ```
-7. **Do NOT write `screens/<overlaySlug>.yml`.** Overlay screens absorbed into base. Record omission in `build-log.json` under `absorbedOverlays[]` for traceability.
+7. **Do NOT write a `screens/<overlaySlug>.yml`.** Overlay screens are absorbed into their base. Record the omission in `build-log.json` under `absorbedOverlays[]` for traceability.
 8. **Divergent overlay (subset check fails):** log `[audit] divergent overlay <slug>` + demote to standalone screen (write `screens/<slug>.yml`, role=base override). R23 — never silently drop.
-9. **Orphan overlay (no base found):** rare; promote to base + mark subsequent siblings as its overlays. Log warning.
+9. **Orphan overlay (no base found):** rare; promote to base (pick it as the base) + mark subsequent siblings as its overlays. Log warning.
 
 **Build impact:**
 - Base screen gains `modals[]` → page component renders `<ModalX open={state.modal === 'x'} />` conditionally.
 - Modal components built like normal components (one agent per component, R10).
-- Screen-by-screen mode (R37): when processing base screen, modal components pulled in via same `for-screen` slice (prepare-build recurses `spec.modals[].componentName` into component slice set).
+- Screen-by-screen mode (R37): when processing a base screen, modal components are pulled in via the same `for-screen` slice (prepare-build recurses `spec.modals[].componentName` into the component slice set).
 
-### 7. Components — DERIVED from instance clusters within page (R8)
+### 7. Components — DERIVED from instance clusters within the page (R8)
 
-After every screen in page walked:
+After every screen in this page has been walked:
 
-7a. Collect every `componentRef.mainComponentKey` from every enriched screen tree in page. Group instances by key.
+7a. Collect every `componentRef.mainComponentKey` from every enriched screen tree in this page. Group instances by key.
 
 7b. For each group:
 - Component `name`: consistent prefix of instance names, OR one cached `client.getComponent(key)` read for master `name`.
@@ -172,7 +172,7 @@ After every screen in page walked:
 
 7c. Write one `pages/<slug>/components/<name>.yml` per cluster.
 
-**Cross-page dedup NOT performed.** Button used on both `richiedente` and `admin` pages gets built twice. Intentional tradeoff of per-page audit. Post-hoc merge can be added later — out of scope here.
+**Cross-page dedup is NOT performed.** A Button used on both `richiedente` and `admin` pages gets built twice. That's the intentional tradeoff of per-page audit. Post-hoc merge can be added later — out of scope here.
 
 ### 8. Meta
 Write `pages/<slug>/meta.yml`:
@@ -208,7 +208,7 @@ node scripts/prepare-build.mjs --validate --page <pageSlug>
 Any schema error → fix + rescan. R23: never skip.
 
 ### 10. Mark page audited
-Patch `design-contract/index.yml` → find matching page entry → set `audited: true`. Use `js-yaml` load+dump so other fields stay intact.
+Patch `design-contract/index.yml` → find the matching page entry → set `audited: true`. Use `js-yaml` load+dump so other fields stay intact.
 
 ## Output
 
@@ -230,9 +230,9 @@ design-contract/
 ```
 
 ## Constraints
-- Never traverse component master for decoration (R5, R32). Master read only for display name.
-- Never emit node without reading screen's `getFileNodes` response first (R5).
-- Never include raw hex in contract output (R6). Every color resolves to token ref via `tokenRefs`.
-- Never record variant not observed on instance in page (R8). No master enumeration. Cross-page clusters NOT merged.
+- Never traverse a component master for decoration (R5, R32). Master read only for display name.
+- Never emit a node without reading the screen's `getFileNodes` response first (R5).
+- Never include raw hex in contract output (R6). Every color resolves to a token ref via `tokenRefs`.
+- Never record a variant not observed on an instance in this page (R8). No master enumeration. Cross-page clusters NOT merged.
 - Never skip icon export null (R23).
 - Single library touch per file (R33) — cached across page runs.

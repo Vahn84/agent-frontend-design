@@ -1,6 +1,6 @@
 # DS Rules Workflow
 
-Generate implementation rules for codebase. Used by Figma's `create_design_system_rules` OR as standalone `rules.md` shipped with codebase.
+Generate implementation rules for a codebase. Used by Figma's `create_design_system_rules` OR as standalone `rules.md` shipped with the codebase.
 
 ## Phases
 

@@ -9,7 +9,7 @@ Each file describes:
 - Concrete override snippets for common wrappers
 - Known fidelity traps
 
-`WIRE-LIBRARY.md` loads relevant file before emitting any wire plan.
+`WIRE-LIBRARY.md` loads the relevant file before emitting any wire plan.
 
 ## Supported libraries
 
@@ -21,4 +21,4 @@ Each file describes:
 | Chakra | `chakra.md` | TODO |
 | PrimeNG (Angular) | `primeng.md` | TODO |
 
-Adding new library = one file here + one addition to `meta.schema.json` library enum (if we add one).
+Adding a new library = one file here + one addition to `meta.schema.json` library enum (if we add one).

@@ -72,7 +72,8 @@ async function main() {
   const pages = fileSummary.document.children.map((p) => ({
     id: p.id,
     name: p.name,
-    frames: (p.children || []).filter((n) => n.type === 'FRAME'),
+    // R-visibility: skip hidden top-level frames.
+    frames: (p.children || []).filter((n) => n.type === 'FRAME' && n.visible !== false),
   }));
   const candidates = pages.filter((p) => p.frames.length > 0);
   const targetPage = pickPage(candidates, TARGET_PAGE);

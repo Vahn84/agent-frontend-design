@@ -124,7 +124,8 @@ async function main() {
     const resp = await client.getFileNodes(fileKey, [p.id], { depth: 2 });
     const doc = resp.nodes[p.id]?.document;
     const kids = doc?.children || [];
-    const frames = kids.filter((k) => k.type === 'FRAME' || k.type === 'SECTION');
+    // R-visibility: skip hidden top-level screens. Designer unhides in Figma to include.
+    const frames = kids.filter((k) => (k.type === 'FRAME' || k.type === 'SECTION') && k.visible !== false);
     const screens = frames
       .filter((k) => (k.absoluteBoundingBox?.width || 0) >= 1280)
       .sort((a, b) => a.absoluteBoundingBox.x - b.absoluteBoundingBox.x);

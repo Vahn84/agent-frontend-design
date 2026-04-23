@@ -16,7 +16,7 @@
  *
  * R20: no hardcoded selectors/class names. Match by name + spatial heuristic.
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -31,6 +31,13 @@ const args = Object.fromEntries(process.argv.slice(2).reduce((acc, v, i, a) => {
 }, []));
 
 const mode = args.full ? 'full' : 'fast';
+// W4: --skip-pixel skips L5 entirely (screenshot + pixelmatch). Fix loop uses this for
+// intermediate validates; final validate omits flag to get fidelity score.
+const skipPixel = !!args['skip-pixel'];
+// L11: opt-in deep structural check (node-level padding/radius/border/bg/color per
+// [data-component] root). Off by default — runs only when --deep passed. Intended
+// for manual /fix triage, not auto-validate loop (R47).
+const deep = !!args.deep;
 const target = args.target;
 const specPath = args.spec;
 const baseUrl = args.url;
@@ -58,13 +65,26 @@ if (existsSync(cacheFile) && mode === 'fast') {
 
 const { chromium } = await import('playwright');
 const browser = await chromium.launch();
-const context = await browser.newContext({ deviceScaleFactor: 2 });
+// W3: single context sized to design dims when screen. Figma ref PNG is 2x (scale:2),
+// so DPR:2 screenshot matches without a second context.
+const ctxOpts = { deviceScaleFactor: 2 };
+if (isScreen && spec.screen?.dimensions) {
+  ctxOpts.viewport = { width: spec.screen.dimensions.width, height: spec.screen.dimensions.height };
+}
+const context = await browser.newContext(ctxOpts);
 const page = await context.newPage();
 
 let route;
 if (isScreen) route = spec.screen.route;
 else route = `/__component-preview/${spec.component.name}`;
-await page.goto(`${baseUrl}${route}`, { waitUntil: 'networkidle' });
+// W2: domcontentloaded + selector wait instead of networkidle. HMR / StrictMode
+// keeps network pings alive → networkidle burns 500ms+ per goto.
+await page.goto(`${baseUrl}${route}`, { waitUntil: 'domcontentloaded' });
+try {
+  await page.waitForSelector(isScreen ? '[data-screen]' : '[data-component]', { timeout: 5000 });
+} catch {
+  // Selector missing → L1 will fail with proper diagnostic. Don't block goto.
+}
 
 const result = { target, mode, pass: true, layers: {} };
 
@@ -286,11 +306,36 @@ if (result.pass) {
   const { join: pjoin } = await import('node:path');
   const l9ProjectRoot = _findProjectRootForL9(target);
   const srcRoot = pjoin(l9ProjectRoot, 'src');
-  const usedVars = new Set();
-  const definedVars = new Set();
+  // W1: cache L9 result keyed by recursive mtime fingerprint of src/. Skip re-walk if unchanged.
+  const l9CacheFile = join(CACHE, `l9-${createHash('sha256').update(srcRoot).digest('hex').slice(0, 12)}.json`);
+  const fingerprint = (() => {
+    let agg = '';
+    const acc = (dir) => {
+      if (!existsSync(dir)) return;
+      for (const entry of readdirSync(dir)) {
+        if (entry === 'node_modules' || entry === '.next' || entry === 'dist' || entry === 'build') continue;
+        const p = pjoin(dir, entry);
+        let s; try { s = statSync(p); } catch { continue; }
+        if (s.isDirectory()) acc(p);
+        else if (/\.(scss|css|tsx?)$/.test(entry)) agg += `${p}:${s.mtimeMs}:${s.size};`;
+      }
+    };
+    acc(srcRoot);
+    return createHash('sha256').update(agg).digest('hex');
+  })();
+  let cachedL9 = null;
+  if (existsSync(l9CacheFile)) {
+    try {
+      const parsed = JSON.parse(readFileSync(l9CacheFile, 'utf8'));
+      if (parsed.fingerprint === fingerprint) cachedL9 = parsed;
+    } catch {}
+  }
+  const usedVars = new Set(cachedL9?.usedVars || []);
+  const definedVars = new Set(cachedL9?.definedVars || []);
   const walk = (dir) => {
     if (!existsSync(dir)) return;
     for (const entry of readdirSync(dir)) {
+      if (entry === 'node_modules' || entry === '.next' || entry === 'dist' || entry === 'build') continue;
       const p = pjoin(dir, entry);
       const s = statSync(p);
       if (s.isDirectory()) walk(p);
@@ -305,12 +350,223 @@ if (result.pass) {
       }
     }
   };
-  walk(srcRoot);
+  if (!cachedL9) {
+    walk(srcRoot);
+    writeFileSync(l9CacheFile, JSON.stringify({ fingerprint, usedVars: [...usedVars], definedVars: [...definedVars] }));
+  }
   const undef = [...usedVars].filter((v) => !definedVars.has(v));
   if (undef.length) {
     result.layers.L9 = { fails: undef.map((v) => ({ prop: 'undefined CSS var', actual: v, expected: 'defined in :root' })) };
   } else {
     result.layers.L9 = 'pass';
+  }
+}
+
+/* L11 NODE-LEVEL STRUCTURAL (opt-in via --deep, R47) — walks every [data-component] in the DOM
+   and compares computed CSS (padding/gap/radius/border/bg/color) to its variant spec. Skipped
+   unless --deep. Intended for manual /fix triage, not the auto-validate loop. */
+if (result.pass && deep && isScreen) {
+  const YAMLmod = await import('js-yaml');
+  const sharedComponentsDir = join(ROOT, 'design-contract', 'components');
+  const componentSpecs = {}; // name → variant[0]
+  if (existsSync(sharedComponentsDir)) {
+    for (const f of readdirSync(sharedComponentsDir).filter((x) => x.endsWith('.yml') && !['index.yml', 'consolidation-log.yml'].includes(x))) {
+      try {
+        const body = YAMLmod.default.load(readFileSync(join(sharedComponentsDir, f), 'utf8'));
+        if (body?.name && body.variants?.[0]) componentSpecs[body.name] = body.variants[0];
+      } catch {}
+    }
+  }
+  // Token → hex (from tokens slice embedded in screen spec).
+  const tokenMap = spec.tokens?.map || {};
+  const tokenHex = (ref) => {
+    const t = tokenMap[ref];
+    if (!t?.value) return null;
+    return normalizeHex(t.value);
+  };
+  function normalizeHex(v) {
+    if (!v) return null;
+    let s = String(v).trim().toLowerCase();
+    if (/^#[0-9a-f]{3}$/.test(s)) s = '#' + s.slice(1).split('').map(c=>c+c).join('');
+    if (/^#[0-9a-f]{8}$/.test(s) && s.endsWith('ff')) s = s.slice(0, 7);
+    const m = s.match(/^rgba?\(\s*(\d+)\s*[,\s]\s*(\d+)\s*[,\s]\s*(\d+)/);
+    if (m) { const to = n => parseInt(n,10).toString(16).padStart(2,'0'); s = '#'+to(m[1])+to(m[2])+to(m[3]); }
+    return s;
+  }
+
+  const detailFails = await page.evaluate((specs) => {
+    const fails = [];
+    const toPx = (s) => parseFloat(s) || 0;
+    const rgbToHex = (rgb) => {
+      const m = rgb.match(/\d+/g);
+      if (!m) return null;
+      return '#' + m.slice(0,3).map(n => parseInt(n,10).toString(16).padStart(2,'0')).join('');
+    };
+    for (const el of document.querySelectorAll('[data-component]')) {
+      const name = el.getAttribute('data-component');
+      const variant = specs[name];
+      if (!variant) continue;
+      const cs = getComputedStyle(el);
+      const push = (prop, actual, expected, detail) => fails.push({ component: name, prop, actual, expected, detail });
+
+      // Padding
+      if (variant.spacing) {
+        const sp = variant.spacing;
+        const map = [
+          ['paddingTop', sp.paddingTop],
+          ['paddingRight', sp.paddingRight],
+          ['paddingBottom', sp.paddingBottom],
+          ['paddingLeft', sp.paddingLeft],
+        ];
+        for (const [k, exp] of map) {
+          if (exp == null) continue;
+          const actual = toPx(cs[k]);
+          if (Math.abs(actual - exp) > 1) push(k, `${actual}px`, `${exp}px`);
+        }
+        if (typeof sp.gap === 'number' && cs.display.includes('flex')) {
+          const actualGap = toPx(cs.gap);
+          if (Math.abs(actualGap - sp.gap) > 1) push('gap', `${actualGap}px`, `${sp.gap}px`);
+        }
+      }
+      // Radius
+      if (variant.radius != null) {
+        const exp = typeof variant.radius === 'number' ? variant.radius : null;
+        if (exp != null) {
+          const actual = toPx(cs.borderRadius);
+          if (Math.abs(actual - exp) > 1) push('borderRadius', `${actual}px`, `${exp}px`);
+        }
+      }
+      // Border
+      if (variant.border && variant.border.width != null) {
+        const exp = variant.border.width;
+        const actual = toPx(cs.borderTopWidth);
+        if (Math.abs(actual - exp) > 1) push('borderWidth', `${actual}px`, `${exp}px`);
+      }
+      // Colors — compare computed bg to expected token hex (root slot aliases).
+      const colors = variant.colors || {};
+      const bgRef = colors.bg || colors.background || colors.root;
+      if (bgRef && specs._tokenMap?.[bgRef]) {
+        const actualBg = rgbToHex(cs.backgroundColor);
+        const expHex = specs._tokenMap[bgRef];
+        if (actualBg && expHex && actualBg.toLowerCase() !== expHex.toLowerCase()) {
+          push('backgroundColor', actualBg, expHex, `token=${bgRef}`);
+        }
+      }
+      const textRef = colors.text || colors.foreground;
+      if (textRef && specs._tokenMap?.[textRef]) {
+        const actualColor = rgbToHex(cs.color);
+        const expHex = specs._tokenMap[textRef];
+        if (actualColor && expHex && actualColor.toLowerCase() !== expHex.toLowerCase()) {
+          push('color', actualColor, expHex, `token=${textRef}`);
+        }
+      }
+      // FIXED dims
+      if (variant.layoutSizing?.horizontal === 'FIXED' && variant.dimensions?.width) {
+        const r = el.getBoundingClientRect();
+        if (Math.abs(r.width - variant.dimensions.width) > 1) push('width', `${Math.round(r.width)}px`, `${variant.dimensions.width}px`);
+      }
+      if (variant.layoutSizing?.vertical === 'FIXED' && variant.dimensions?.height) {
+        const r = el.getBoundingClientRect();
+        if (Math.abs(r.height - variant.dimensions.height) > 1) push('height', `${Math.round(r.height)}px`, `${variant.dimensions.height}px`);
+      }
+    }
+    return fails;
+  }, { ...componentSpecs, _tokenMap: Object.fromEntries(Object.entries(tokenMap).map(([k,v]) => [k, normalizeHex(v.value)])) });
+
+  if (detailFails.length) {
+    result.layers.L11 = { fails: detailFails };
+    result.pass = false;
+  } else {
+    result.layers.L11 = 'pass';
+  }
+}
+
+/* L13 IMAGE-ASPECT SANITY (R52, opt-in via --deep) — for every rendered <img>, compare native
+   asset aspect ratio vs rendered bbox aspect ratio. Diff >2% AND no R29 crop pct present on
+   positioning → fail "silent stretch". Catches aspect-distortion regardless of upstream audit. */
+if (result.pass && deep && isScreen) {
+  const aspectFails = await page.evaluate(async () => {
+    const fails = [];
+    const imgs = Array.from(document.querySelectorAll('img'));
+    for (const img of imgs) {
+      // Wait for natural dims.
+      if (!img.complete || img.naturalWidth === 0) {
+        try {
+          await new Promise((resolve, reject) => {
+            if (img.complete && img.naturalWidth > 0) return resolve();
+            img.addEventListener('load', resolve, { once: true });
+            img.addEventListener('error', reject, { once: true });
+            setTimeout(resolve, 1500); // budget
+          });
+        } catch {}
+      }
+      const nw = img.naturalWidth, nh = img.naturalHeight;
+      if (!nw || !nh) continue;
+      const r = img.getBoundingClientRect();
+      if (r.width < 2 || r.height < 2) continue;
+      const nativeAspect = nw / nh;
+      const renderedAspect = r.width / r.height;
+      const diffPct = Math.abs(nativeAspect - renderedAspect) / nativeAspect;
+      if (diffPct <= 0.02) continue;
+      // R29 crop escape: if the img uses percentage width+height + left/top (negative or
+      // non-zero) suggesting an intentional crop, or object-fit contain/cover, skip.
+      const cs = getComputedStyle(img);
+      const of = cs.objectFit;
+      if (of === 'contain' || of === 'cover' || of === 'none') continue;
+      // Treat >100% width/height (arbitrary Tailwind crop) as intentional.
+      const styleW = img.style.width || '';
+      const styleH = img.style.height || '';
+      const cls = img.className || '';
+      // R29 legit crop requires NON-trivial pcts: width/height >100%, OR negative left/top.
+      // Identity pct `[0%] [0%]` = no crop → does NOT exempt silent stretch.
+      const nontrivialCrop =
+        /\[1\d{2,}(\.\d+)?%\]|\[[2-9]\d{2,}(\.\d+)?%\]|\b[wh]-\[1\d{2,}(\.\d+)?%\]/.test(cls) ||
+        /\bleft-\[-\d/.test(cls) || /\btop-\[-\d/.test(cls);
+      if (nontrivialCrop) continue;
+      fails.push({
+        src: (img.src.split('/').pop() || '').slice(0, 60),
+        native: `${nw}x${nh} (${nativeAspect.toFixed(3)})`,
+        rendered: `${Math.round(r.width)}x${Math.round(r.height)} (${renderedAspect.toFixed(3)})`,
+        diffPct: `${(diffPct * 100).toFixed(1)}%`,
+        objectFit: of,
+      });
+    }
+    return fails;
+  });
+  if (aspectFails.length) {
+    result.layers.L13 = { fails: aspectFails.map((f) => ({ prop: `img silent-stretch ${f.src}`, actual: f.rendered, expected: `aspect-preserving (native ${f.native})`, detail: `diff=${f.diffPct} object-fit=${f.objectFit}` })) };
+    result.pass = false;
+  } else {
+    result.layers.L13 = 'pass';
+  }
+}
+
+/* L10 TOKEN FIDELITY — cross-verify Figma tokens.yml vs project tokens.css + all var() references.
+   Delegates to scripts/check-tokens.mjs. Inherits its pass/warn/fail output. R46. */
+if (result.pass) {
+  const { spawnSync } = await import('node:child_process');
+  const contractGuess = isScreen ? spec.screen?._contractRoot : spec.component?._contractRoot;
+  const pageSlug = isScreen ? spec.screen?._pageSlug : spec.component?._pageSlug;
+  // Best-effort: slices may embed the source contract path, else fall back to scanning all pages.
+  let contractArg = contractGuess || join(ROOT, 'design-contract');
+  if (pageSlug && existsSync(join(contractArg, 'pages', pageSlug))) {
+    contractArg = join(contractArg, 'pages', pageSlug);
+  }
+  const srcRootGuess = _findProjectRootForL9(target);
+  const srcPath = join(srcRootGuess, 'src');
+  if (existsSync(srcPath)) {
+    const res = spawnSync('node', [join(ROOT, 'scripts/check-tokens.mjs'), '--contract', contractArg, '--src', srcPath, '--quiet'], { encoding: 'utf8' });
+    if (res.status === 0) {
+      result.layers.L10 = 'pass';
+    } else {
+      const failLines = (res.stdout || '').split('\n').filter((l) => l.startsWith('  {')).slice(0, 10);
+      result.layers.L10 = { fails: failLines.map((l) => {
+        try { return JSON.parse(l.trim()); } catch { return { raw: l.trim() }; }
+      }) };
+      result.pass = false;
+    }
+  } else {
+    result.layers.L10 = 'skip (no src dir)';
   }
 }
 
@@ -340,10 +596,14 @@ if (result.pass) {
   }
 }
 
-/* L5 PIXEL DIFF — screens only. Always runs when Figma reference exists, even in --fast mode.
+/* L5 PIXEL DIFF — screens only. Skipped when --skip-pixel (W4: fix-loop intermediate validates).
    Rendered at design dimensions so fidelity is viewport-independent. */
 result.fidelity = null;
-if (isScreen) {
+if (isScreen && skipPixel) {
+  result.layers.L5 = 'skip (--skip-pixel)';
+  result.fidelity = 'skipped';
+}
+if (isScreen && !skipPixel) {
   const { PNG } = await import('pngjs');
   const pixelmatch = (await import('pixelmatch')).default;
   const { width, height } = spec.screen.dimensions;
@@ -352,14 +612,9 @@ if (isScreen) {
     result.layers.L5 = { skip: 'no figma reference cached — run screenshot.mjs first' };
     result.fidelity = 'n/a (no reference)';
   } else {
-    // Render at design dimensions so fidelity is viewport-independent.
-    const ctxDesign = await browser.newContext({ deviceScaleFactor: 1, viewport: { width, height } });
-    const pageDesign = await ctxDesign.newPage();
-    const route = spec.screen.route;
-    await pageDesign.goto(`${baseUrl}${route}`, { waitUntil: 'networkidle' });
-    await pageDesign.waitForTimeout(500);
-    const shot = await pageDesign.screenshot({ clip: { x: 0, y: 0, width, height } });
-    await ctxDesign.close();
+    // W3: reuse existing page (already sized to design dims, DPR:2). Figma ref is 2x scale,
+    // so DPR:2 screenshot matches pixel-for-pixel without a second browser context.
+    const shot = await page.screenshot({ clip: { x: 0, y: 0, width, height } });
     const img1 = PNG.sync.read(shot);
     const img2 = PNG.sync.read(readFileSync(figmaRefPath));
     if (img1.width !== img2.width || img1.height !== img2.height) {

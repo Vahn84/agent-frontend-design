@@ -41,15 +41,15 @@ Generate `src/styles/typography.css` classes from `typography.yml` — one utili
 
 ### 7. Router scaffold + page stubs
 For each screen in `screens/*.yml`:
-- Write `src/pages/<name>/<Name>.tsx` as stub: `export function <Name>() { return <div data-screen="<name>">stub</div>; }`
-- Write `src/pages/<name>/<Name>.mock.ts` with screen's `mockData` already populated (build-screen agent will consume).
+- Write `src/pages/<name>/<Name>.tsx` as a stub: `export function <Name>() { return <div data-screen="<name>">stub</div>; }`
+- Write `src/pages/<name>/<Name>.mock.ts` with the screen's `mockData` already populated (build-screen agent will consume).
 - Register route in `src/main.tsx` (React) or `app.routes.ts` (Angular).
 
-Stubs let dev server boot BEFORE build-screen agents run. Build-screen agents overwrite stub with full page.
+Stubs let dev server boot BEFORE build-screen agents run. Build-screen agents then overwrite the stub with the full page.
 
 ### 8. Library wrapper stubs (R9, R14)
 For each `meta.library.components[]` declared library-wrapped:
-- Create `src/components/<name>/<name>.tsx` that re-exports library component with project styling hook.
+- Create `src/components/<name>/<name>.tsx` that re-exports the library component with project styling hook.
 - Do NOT build custom versions.
 
 ### 9. Dev server check

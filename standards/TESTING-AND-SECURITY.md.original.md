@@ -59,14 +59,14 @@ Some checks self-correct. Fix committed back to PR branch automatically — no h
 
 | Tool | Fixes | Mechanism |
 |------|-------|-----------|
-| **autofix.ci** | Anything with CLI fix mode (`eslint --fix`, `prettier --write`, etc.) | Runs in CI, pushes commit to PR branch |
+| **autofix.ci** | Anything with a CLI fix mode (`eslint --fix`, `prettier --write`, etc.) | Runs in CI, pushes commit to PR branch |
 | **pre-commit.ci** | All hooks configured in `.pre-commit-config.yaml` | Same mechanism, scoped to pre-commit hooks |
 | **Trunk.io** | Hundreds of linters/formatters with managed autofix | Native Bitbucket integration, posts inline review comments |
 | **Dependabot / Renovate** | Lockfile updates, security patches | Opens PRs automatically, can auto-merge patch versions |
 
 **Default:** `autofix.ci` for greenfield (free, works on Bitbucket Pipelines, simple config). Upgrade to **Trunk.io** for centralized linter management.
 
-**Forbidden:** manually editing files owned by autofix tool. If output wrong, fix tool config, not output.
+**Forbidden:** manually editing files owned by an autofix tool. If output wrong, fix tool config, not output.
 
 ## 5. AI-powered code review
 
@@ -145,7 +145,7 @@ Enforced by PR pipeline. Lowering requires team consensus + justification in PR 
 | Metric | Threshold | Enforced by |
 |--------|-----------|-------------|
 | Line coverage | ≥ 80% on `src/features/**` and `src/components/**` | Vitest config |
-| Branch coverage | ≥ 70% on same paths | Vitest config |
+| Branch coverage | ≥ 70% on the same paths | Vitest config |
 | Main bundle size | Defined per project | `size-limit` |
 | Lighthouse perf | ≥ 90 | Lighthouse CI |
 | Lighthouse a11y | ≥ 95 | Lighthouse CI |
@@ -174,6 +174,6 @@ Every project enables at minimum:
 - `eslint-disable-next-line` on rules from `eslint-plugin-security`, `no-unsanitized`, or `jsx-a11y` without dated TODO + exception ticket
 - Disabling Chromatic baselines without explicit design approval
 - Committing `.env` files with real credentials
-- Manually editing files owned by autofix tool
+- Manually editing files owned by an autofix tool
 - Skipping secret scanner
 - Suppressing Sonar quality-gate failures without team consensus

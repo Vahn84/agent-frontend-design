@@ -23,3 +23,6 @@ patch-icons.tmp.mjs
 
 # local Claude settings (contains secrets)
 .claude/settings.local.json
+
+# serena MCP cache
+.serena/

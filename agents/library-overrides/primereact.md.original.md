@@ -15,17 +15,17 @@ import 'primereact/resources/primereact.min.css';
 import 'primeicons/primeicons.css';
 ```
 
-To suppress default theme colors and drive everything from project tokens: import only `primereact.min.css` (structural styles), skip theme CSS. Apply all colors + dimensions via `pt`/`className` in each wrapper.
+To suppress default theme colors and drive everything from project tokens: import only `primereact.min.css` (structural styles) and skip the theme CSS entirely. Then apply all colors + dimensions via `pt`/`className` in each wrapper.
 
 ## Mandatory `pt` boilerplate (applies to every wrap)
 
-Most fidelity bugs come from DEFAULT DOM elements inside library components bleeding through `unstyled`. Native inputs, icon slots, hidden labels, default focus rings render on top of or next to your styled box.
+Most fidelity bugs come from DEFAULT DOM elements inside library components bleeding through `unstyled`. Native inputs, icon slots, hidden labels, and default focus rings render on top of or next to your styled box.
 
 **Always apply these baselines when wrapping:**
 
 ### Input-family (Checkbox / RadioButton / InputSwitch / TriStateCheckbox)
 
-Native `<input>` renders with browser default and stacks on top of styled box → "two squares" effect. Hide it:
+Native `<input>` renders with browser default and stacks on top of your styled box → "two squares" effect. Hide it:
 
 ```ts
 pt.input: {
@@ -41,7 +41,7 @@ pt.input: {
 }
 ```
 
-Combined with `pt.root: { style: { position: 'relative' } }` to anchor absolute input.
+Combined with `pt.root: { style: { position: 'relative' } }` to anchor the absolute input.
 
 **Critical**: do NOT set `pointer-events: none`. Input must remain clickable (invisible but intercepts clicks). Setting it kills toggle interaction.
 
@@ -56,7 +56,7 @@ pt.root: { className: yourClass }
 
 ### Dropdown / MultiSelect / AutoComplete (with caret)
 
-Default caret icon uses PrimeIcons fonts. If PrimeIcons not imported, renders as broken glyph. Either import primeicons OR replace:
+Default caret icon uses PrimeIcons fonts. If you didn't import PrimeIcons, it renders as broken glyph. Either import primeicons OR replace:
 ```ts
 pt.dropdownIcon: ({ children }) => <img src={yourChevronSvg} alt="" />
 ```
@@ -68,7 +68,7 @@ Library adds `:hover` background. Override:
 :global(.p-datatable-row):hover,
 :global(.p-datatable) :global(tr):hover { background: inherit; }
 ```
-In wrapped component's SCSS module, use `:global()` to reach PrimeReact's class names.
+In the wrapped component's SCSS module, use `:global()` to reach PrimeReact's class names.
 
 ### Dialog / Sidebar / Overlay
 
@@ -79,11 +79,11 @@ pt.mask: { style: { background: 'rgba(0,0,0,0.4)', zIndex: 1000 } }
 
 ### Paginator (hidden ellipsis gets default size)
 
-`pt.pageButton` receives context with `.active`. Ellipsis separator is `<span>` with own class — override via `pt.ellipsisMark` if present, OR use `template="PrevPageLink PageLinks NextPageLink"` which handles it natively.
+`pt.pageButton` receives context with `.active`. Ellipsis separator is a `<span>` with its own class — override via `pt.ellipsisMark` if present, OR use `template="PrevPageLink PageLinks NextPageLink"` which handles it natively.
 
 ---
 
-**Wire-library agent MUST apply these defaults before emitting wrap.** Skipping boilerplate = native elements bleed through = L6 structural validation fails.
+**Wire-library agent MUST apply these defaults before emitting a wrap.** Skipping the boilerplate = native elements bleed through = L6 structural validation fails.
 
 ## Mandatory statefulness per component type
 
@@ -141,7 +141,7 @@ Two primary routes:
    ```
    Use for granular structural restyling.
 
-2. **CSS custom properties** — PrimeReact internals reference `--primary-color`, `--surface-*`, etc. Redefine in project tokens.css so whole library uses project colors.
+2. **CSS custom properties** — PrimeReact internals reference `--primary-color`, `--surface-*`, etc. Redefine in project tokens.css so the whole library uses project colors.
 
 Prefer `pt` for high-fidelity components (DataTable, Paginator, Dialog); prefer global CSS vars for simple components (Button, InputText, Checkbox).
 
@@ -240,7 +240,7 @@ export function Checkbox({ variant, size = 20 }: Props) {
   );
 }
 ```
-Apply border + bg + border-radius: 4px to `box` slot to match Figma exactly.
+Apply border + bg + border-radius: 4px to the `box` slot to match Figma exactly.
 
 ### DataTable (for tables like ElencoPratiche)
 ```tsx
@@ -272,7 +272,7 @@ export function AspiDataTable({ rows, columns }: Props) {
 }
 ```
 - `body={c.renderCell}` lets you slot StatusChip, OnOff, Avatar into each cell.
-- `thead` className drives brand-blue pill background + rounded-200 border.
+- `thead` className drives the brand-blue pill background + rounded-200 border.
 - Disable default hover colors in SCSS by overriding `:global(.p-datatable-row):hover { background: inherit; }`.
 
 ### Paginator
@@ -300,13 +300,13 @@ export function Paginator({ first, rows, totalRecords, onPageChange }: Props) {
 }
 ```
 - `template` string controls which parts render. Drop parts you don't need.
-- `pageButton` accepts function receiving `context.active` — conditional class for active pill.
-- Dots (ellipsis) rendered automatically when `pageLinkSize` smaller than total.
+- `pageButton` accepts a function that receives `context.active` — conditional class for active pill.
+- Dots (ellipsis) rendered automatically when `pageLinkSize` is smaller than total.
 
 ## Fidelity traps
 
 1. **Default theme leakage**: if you import theme.css, every library component inherits those colors. Either skip theme.css OR override every relevant CSS var in tokens.css.
-2. **PrimeIcons**: don't import if design uses custom icons. Adds 100KB + clutters namespace.
+2. **PrimeIcons**: don't import if your design uses custom icons. Adds 100KB + clutters the namespace.
 3. **Default focus rings**: PrimeReact adds 2-3px blue outline on focus-visible. Override:
    ```scss
    :global(.p-button:focus-visible),
@@ -317,8 +317,8 @@ export function Paginator({ first, rows, totalRecords, onPageChange }: Props) {
    }
    ```
 4. **DataTable cell padding** defaults to 1rem. Match Figma's 16px/24px with pt cell className.
-5. **InputSwitch thumb size**: default is 16×16 with 4px offset. Figma may want different dims. Use inset-based thumb positioning in SCSS (not library's default translate).
-6. **Dialog mask opacity + z-index**: check `pt.mask` if you want custom overlay.
+5. **InputSwitch thumb size**: default is 16×16 with 4px offset. Figma may want different dims. Use inset-based thumb positioning in SCSS (not the library's default translate).
+6. **Dialog mask opacity + z-index**: check `pt.mask` if you want a custom overlay.
 
 ## Validation hook
-After wiring, `validate.mjs --full` should report same or better fidelity. If fidelity drops > 2% → investigate: likely default theme bleeding through or pt slot missed. Add corresponding class override.
+After wiring, `validate.mjs --full` should report the same or better fidelity. If fidelity drops > 2% → investigate: likely default theme bleeding through or a pt slot missed. Add the corresponding class override.
